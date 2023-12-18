@@ -30,7 +30,6 @@
 *.exe
 *.out
 *.app
-<<<<<<< HEAD
 
 # third-party repos
 /rpg_dvs_ros/*
@@ -38,6 +37,3 @@
 /esvo_time_surface/*
 /ws_hikrobot_Camera/*
 /catkin_simple/*
-=======
->>>>>>> 339d97dfea79cbc861eae43958345eccd1785189
-ws_hikrobot_camera/HIKROBOT-MVS-CAMERA-ROS
