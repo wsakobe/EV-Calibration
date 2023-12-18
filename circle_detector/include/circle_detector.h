@@ -51,7 +51,7 @@ private:
     void findCircle(const cv::Mat& event_map_positive, const cv::Mat& event_map_negative);
     void organizeCircles();
 
-    ros::Publisher circle_pub_ = nh.advertise<circle_msgs::circleArray>("/circle_ev/circleArray",10);
+    ros::Publisher circle_pub_;
     circle_msgs::circle circle_msg;
     circle_msgs::circleArray circle_array;
 
@@ -67,7 +67,7 @@ void CircleDetector::eventMaptDetect(const cv::Mat& event_map_no_polarity, const
     //cv::medianBlur(event_map_no_polarity, event_map_no_polarity, 3);
     cv::Mat event_map_no_polarity_8U;
     event_map_no_polarity.convertTo(event_map_no_polarity_8U, CV_8UC1);
-    cv::imshow("No pola", event_map_no_polarity_8U);
+    cv::imshow("No pola", event_map_no_polarity_8U * 255);
     cv::waitKey(1);
     //std::string str = "/data/out/" + std::to_string(count++) + ".bmp";
     //cv::imwrite(str, event_map_no_polarity * 255);
@@ -81,7 +81,7 @@ void CircleDetector::eventMaptDetect(const cv::Mat& event_map_no_polarity, const
     	if (contours[i].size() <= 50 || contours[i].size() >= 200) continue;
 		if (contourArea(contours[i]) < 30 && contourArea(contours[i]) > 100) continue;
 
-        cv::drawContours(imgContour, contours, i, cv::Scalar(rand() * 255, rand() * 255, rand() * 255), 2, cv::LINE_8);
+        cv::drawContours(imgContour, contours, i, cv::Scalar(255, 5, 55), 2, cv::LINE_8);
 
 		m_ellipsetemp = cv::fitEllipse(contours[i]);
         
@@ -108,7 +108,7 @@ void CircleDetector::eventMaptDetect(const cv::Mat& event_map_no_polarity, const
         circle_msg.timestamp = 0;
         circle_array.circles.push_back(circle_msg);
     }
-    circle_pub_.publish(circle_array);
+    //circle_pub_.publish(circle_array);
     ROS_INFO("Publishing circle message");
 
     return;
@@ -121,8 +121,8 @@ void CircleDetector::organizeCircles(){
     // plot ellipse
     for (auto circle : onboard_circles){
         //ellipse(imgMark, m_ellipsetemp, cv::Scalar(255, 0, 0), 5);
-        cv::line(imgMark, cvPoint(circle.circle_position.x - 10, circle.circle_position.y), cvPoint(circle.circle_position.x + 10, circle.circle_position.y), cv::Scalar(120,120,0), 5, 8, 0);	
-        cv::line(imgMark, cvPoint(circle.circle_position.x, circle.circle_position.y - 10), cvPoint(circle.circle_position.x, circle.circle_position.y + 10), cv::Scalar(120,120,0), 5, 8, 0);
+        cv::line(imgMark, cvPoint(circle.circle_position.x - 10, circle.circle_position.y), cvPoint(circle.circle_position.x + 10, circle.circle_position.y), cv::Scalar(0,120,250), 5, 8, 0);	
+        cv::line(imgMark, cvPoint(circle.circle_position.x, circle.circle_position.y - 10), cvPoint(circle.circle_position.x, circle.circle_position.y + 10), cv::Scalar(120,120,250), 5, 8, 0);
     }
     
     cv::imshow("ellipse", imgMark);
