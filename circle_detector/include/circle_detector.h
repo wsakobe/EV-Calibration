@@ -75,7 +75,7 @@ void CircleDetector::eventMaptDetect(const cv::Mat& event_map_no_polarity, const
     std::vector<std::vector<cv::Point> > contours;
 	std::vector<cv::Vec4i> hierarchy;
     cv::findContours(event_map_no_polarity_8U, contours, hierarchy, CV_RETR_EXTERNAL, CV_CHAIN_APPROX_NONE);
-    onboard_circles.clear();
+    onboard_circles.clear();   
 
     for (int i = 0; i < contours.size();i++){
     	if (contours[i].size() <= 50 || contours[i].size() >= 200) continue;
