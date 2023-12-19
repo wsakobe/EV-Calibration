@@ -32,8 +32,8 @@
 *.app
 
 # third-party repos
-/rpg_dvs_ros
-/hikrobot_multicam_ros
-/esvo_time_surface
-/ws_hikrobot_camera
-/catkin_simple
+rpg_dvs_ros/
+hikrobot_multicam_ros/
+esvo_time_surface/
+ws_hikrobot_camera/
+catkin_simple/

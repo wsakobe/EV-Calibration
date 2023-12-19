@@ -63,15 +63,18 @@ private:
 
 void CircleDetector::eventMaptDetect(const cv::Mat& event_map_no_polarity, const cv::Mat& event_map_positive, const cv::Mat& event_map_negative){
     cv::Mat imgContour = cv::Mat::zeros(event_map_no_polarity.rows, event_map_no_polarity.cols, CV_32FC3);
- 
-    //cv::medianBlur(event_map_no_polarity, event_map_no_polarity, 3);
+    cv::Mat event_show = cv::Mat::zeros(event_map_no_polarity.rows, event_map_no_polarity.cols, CV_32FC3);
+    cv::Mat output_img = cv::Mat::zeros(event_map_no_polarity.rows, event_map_no_polarity.cols * 2, CV_32FC3);
+    cv::Mat pos_and_neg = cv::Mat::zeros(event_map_no_polarity.rows, event_map_no_polarity.cols * 2, CV_32FC1);
+    cv::cvtColor(event_map_no_polarity, event_show, cv::COLOR_GRAY2BGR); 
+
+    cv::medianBlur(event_map_no_polarity, event_map_no_polarity, 3);
+    cv::medianBlur(event_map_positive, event_map_positive, 3);
+    cv::medianBlur(event_map_negative, event_map_negative, 3);
+
+    /*
     cv::Mat event_map_no_polarity_8U;
     event_map_no_polarity.convertTo(event_map_no_polarity_8U, CV_8UC1);
-    cv::imshow("No pola", event_map_no_polarity_8U * 255);
-    cv::waitKey(1);
-    //std::string str = "/data/out/" + std::to_string(count++) + ".bmp";
-    //cv::imwrite(str, event_map_no_polarity * 255);
-    
     std::vector<std::vector<cv::Point> > contours;
 	std::vector<cv::Vec4i> hierarchy;
     cv::findContours(event_map_no_polarity_8U, contours, hierarchy, CV_RETR_EXTERNAL, CV_CHAIN_APPROX_NONE);
@@ -92,22 +95,30 @@ void CircleDetector::eventMaptDetect(const cv::Mat& event_map_no_polarity, const
         temp_circ.width = m_ellipsetemp.size.width;
         temp_circ.circle_position = m_ellipsetemp.center;
         onboard_circles.push_back(temp_circ);
-	}
-    cv::imshow("contour", imgContour);
+	}*/
+
+    cv::hconcat(event_show, imgContour, output_img);
+    cv::imshow("compare", output_img);
     cv::waitKey(1);
-       
+    //std::string str = "/data/out/" + std::to_string(count++) + ".bmp";
+    //cv::imwrite(str, output_img * 255);
+
+    cv::hconcat(event_map_positive, event_map_negative, pos_and_neg);
+    cv::imshow("pos and neg", pos_and_neg);
+    cv::waitKey(1);
+
     if (onboard_circles.size() < cb.boardHeight * cb.boardWidth - 5){
         return;
     }
-    organizeCircles();
-    for (auto circle : onboard_circles){
-        circle_msg.x = circle.circle_position.x;
-        circle_msg.y = circle.circle_position.y;
-        circle_msg.x_grid = circle.grid_pose.x;
-        circle_msg.y_grid = circle.grid_pose.y;
-        circle_msg.timestamp = 0;
-        circle_array.circles.push_back(circle_msg);
-    }
+    //organizeCircles();
+    // for (auto circle : onboard_circles){
+    //     circle_msg.x = circle.circle_position.x;
+    //     circle_msg.y = circle.circle_position.y;
+    //     circle_msg.x_grid = circle.grid_pose.x;
+    //     circle_msg.y_grid = circle.grid_pose.y;
+    //     circle_msg.timestamp = 0;
+    //     circle_array.circles.push_back(circle_msg);
+    // }
     //circle_pub_.publish(circle_array);
     ROS_INFO("Publishing circle message");
 
@@ -181,6 +192,8 @@ public:
                 }
             }
         }
+        cv::imshow("event", event_map_no_polarity * 255);
+        cv::waitKey(1);
         cd.eventMaptDetect(event_map_no_polarity, event_map_positive, event_map_negative);
         ROS_INFO("Event map generated");
     }
@@ -213,6 +226,8 @@ public:
             if(thread.joinable())
                 thread.join();
 
+        cv::imshow("event", event_map_no_polarity * 255);
+        cv::waitKey(1);
         cd.eventMaptDetect(event_map_no_polarity, event_map_positive, event_map_negative);
         ROS_INFO("Event map generated");
     }
