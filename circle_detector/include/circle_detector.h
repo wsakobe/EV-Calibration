@@ -59,6 +59,7 @@ private:
     void connectedComponentLabeling(const cv::Mat& src, std::vector<std::vector<cv::Point>>& quadArea);
     pcaInfo pcaAnalysis(std::vector<cv::Point> points);
     double euclideanDistance(const cv::Point2f& p1, const cv::Point2f& p2);
+    double distanceFromTwoClusters(const circleInformation& cluster_1, const circleInformation& cluster_2);
     bool coEllipse(const circleInformation& a, const circleInformation& b);
     void organizeCircles(const cv::Mat& event_map);
 
@@ -69,11 +70,13 @@ private:
 
     int count = 0;
     std::vector<std::vector<cv::Point>> quadArea_pos, quadArea_neg;
-    std::vector<circleInformation> candidate_pos, candidate_neg, candidate_circles, onboard_circles;
+    std::deque<circleInformation> candidate_pos, candidate_neg;
+    std::vector<circleInformation> candidate_circles, onboard_circles;
     std::vector<std::pair<circleInformation, circleInformation>> candidate_full;
     cv::RotatedRect m_ellipsetemp;
+    circleInformation current;
 
-    float PCA_high = 25, PCA_low = 2;
+    float PCA_high = 15, PCA_low = 2;
 };
 
 double CircleDetector::euclideanDistance(const cv::Point2f& p1, const cv::Point2f& p2) {
@@ -83,21 +86,11 @@ double CircleDetector::euclideanDistance(const cv::Point2f& p1, const cv::Point2
 }
 
 bool CircleDetector::coEllipse(const circleInformation& a, const circleInformation& b){
-    double dist = euclideanDistance(a.pca_res.center, b.pca_res.center);
-    double vertical = ((a.pca_res.center.x - b.pca_res.center.x) * (a.pca_res.comp1.x + b.pca_res.comp1.x) + (a.pca_res.center.y - b.pca_res.center.y) * (a.pca_res.comp1.y + b.pca_res.comp1.y))
-     / std::sqrt((a.pca_res.center.x - b.pca_res.center.x) * (a.pca_res.center.x - b.pca_res.center.x) + (a.pca_res.center.y - b.pca_res.center.y) * (a.pca_res.center.y - b.pca_res.center.y));
-    
     std::vector<cv::Point> ellipse_points;
     ellipse_points.insert(ellipse_points.end(), a.area.begin(), a.area.end());
     ellipse_points.insert(ellipse_points.end(), b.area.begin(), b.area.end());
     m_ellipsetemp = cv::fitEllipse(ellipse_points);
     
-    // size balance restriction
-    // if ((std::max(a.area.size(), b.area.size()) - std::min(a.area.size(), b.area.size())) / ellipse_points.size() > 0.1) {
-    //     ROS_ERROR("Point number failed");
-    //     return false;
-    // }
-
     // fitting error restriction
     float fit_error = 0.0;
     for (auto p : ellipse_points){
@@ -106,27 +99,27 @@ bool CircleDetector::coEllipse(const circleInformation& a, const circleInformati
         fit_error += (x_rot * x_rot) / (m_ellipsetemp.size.width * m_ellipsetemp.size.width) + (y_rot * y_rot) / (m_ellipsetemp.size.height * m_ellipsetemp.size.height) - 0.25;
     }
     fit_error /= ellipse_points.size();
-    if (fit_error > 0.15){
+    if (fit_error > 0.05){
         ROS_ERROR("Fitting failed");
         return false;
     } 
-
+    
+    // ellipse size restriction
     if (m_ellipsetemp.size.width > sensor_size_.height / std::min(cb.boardHeight, cb.boardWidth) || m_ellipsetemp.size.height > sensor_size_.height / std::min(cb.boardHeight, cb.boardWidth)){
         ROS_ERROR("Size failed");
         return false;
     }
-
+    
     // angle restriction
     float angle_min_x = 1000, angle_max_x = -1, angle_min_y = 1000, angle_max_y = -1, angle_now, angle_min_a, angle_max_a, angle_min_b, angle_max_b;
     for (auto point : a.area){
         angle_now = cv::fastAtan2(point.y - m_ellipsetemp.center.y, point.x - m_ellipsetemp.center.x);
         if (angle_now > angle_max_x) angle_max_x = angle_now;
         if (angle_now < angle_min_x) angle_min_x = angle_now;
-        angle_now = cv::fastAtan2(point.x - m_ellipsetemp.center.x, point.y - m_ellipsetemp.center.y);
+        angle_now = cv::fastAtan2(point.y - m_ellipsetemp.center.y, -point.x + m_ellipsetemp.center.x);
         if (angle_now > angle_max_y) angle_max_y = angle_now;
         if (angle_now < angle_min_y) angle_min_y = angle_now;
     }
-    
     if (angle_max_x - angle_min_x < angle_max_y - angle_min_y){
         angle_max_a = angle_max_x;
         angle_min_a = angle_min_x;
@@ -134,16 +127,16 @@ bool CircleDetector::coEllipse(const circleInformation& a, const circleInformati
         angle_max_a = angle_max_y;
         angle_min_a = angle_min_y;
     }
+
     angle_min_x = 1000, angle_max_x = -1, angle_min_y = 1000, angle_max_y = -1;
     for (auto point : b.area){
         angle_now = cv::fastAtan2(point.y - m_ellipsetemp.center.y, point.x - m_ellipsetemp.center.x);
         if (angle_now > angle_max_x) angle_max_x = angle_now;
         if (angle_now < angle_min_x) angle_min_x = angle_now;
-        angle_now = cv::fastAtan2(point.x - m_ellipsetemp.center.x, point.y - m_ellipsetemp.center.y);
+        angle_now = cv::fastAtan2(point.y - m_ellipsetemp.center.y, -point.x + m_ellipsetemp.center.x);
         if (angle_now > angle_max_y) angle_max_y = angle_now;
         if (angle_now < angle_min_y) angle_min_y = angle_now;
     }
-
     if (angle_max_x - angle_min_x < angle_max_y - angle_min_y){
         angle_max_b = angle_max_x;
         angle_min_b = angle_min_x;
@@ -152,25 +145,26 @@ bool CircleDetector::coEllipse(const circleInformation& a, const circleInformati
         angle_min_b = angle_min_y;
     }
     
-    std::cout << "Angle a: " << angle_max_a << " " << angle_min_a << " Angle b: " << angle_max_b << " " << angle_min_b << std::endl;
-    std::cout << "Angle diff a: " << angle_max_a - angle_min_a << std::endl;
-    std::cout << "Angle diff b: " << angle_max_b - angle_min_b << std::endl;
-    std::cout << "vertical: " << vertical << " dist: " << dist << std::endl;
-
-    if (abs(vertical) > 0.4) {
-        ROS_ERROR("Vertical failed");
+    if (std::abs(angle_max_a - angle_min_a - angle_max_b + angle_min_b) > 45 || angle_max_a - angle_min_a < 100 || angle_max_b - angle_min_b < 100) {
+        ROS_ERROR("Angle failed");
         return false;
-    }
+    };
 
+    // distance restriction
+    double dist = euclideanDistance(a.pca_res.center, b.pca_res.center);
     if (dist > sensor_size_.height / std::min(cb.boardHeight, cb.boardWidth)) {
         ROS_ERROR("Dist failed");
         return false;
     }
-
-    if (std::abs(angle_max_a - angle_min_a - angle_max_b + angle_min_b) > 40 || angle_max_a - angle_min_a < 100 || angle_max_b - angle_min_b < 100) {
-        ROS_ERROR("Angle failed");
-        return false;
-    };
+    
+    // pca direction restriction
+    double vertical = ((a.pca_res.center.x - b.pca_res.center.x) * (a.pca_res.comp1.x + b.pca_res.comp1.x) + (a.pca_res.center.y - b.pca_res.center.y) * (a.pca_res.comp1.y + b.pca_res.comp1.y))
+     / std::sqrt((a.pca_res.center.x - b.pca_res.center.x) * (a.pca_res.center.x - b.pca_res.center.x) + (a.pca_res.center.y - b.pca_res.center.y) * (a.pca_res.center.y - b.pca_res.center.y));
+    
+    // if (abs(vertical) > 0.4) {
+    //     ROS_ERROR("Vertical failed");
+    //     return false;
+    // }
 
     return true;
 }
@@ -251,18 +245,33 @@ CircleDetector::pcaInfo CircleDetector::pcaAnalysis(std::vector<cv::Point> point
     return pca_now;
 }
 
+double CircleDetector::distanceFromTwoClusters(const circleInformation& cluster_1, const circleInformation& cluster_2){
+    cv::Point2f center_1, center_2;
+    for (auto a:cluster_1.area){
+        center_1 += (cv::Point2f)a;
+    }
+    for (auto b:cluster_2.area){
+        center_2 += (cv::Point2f)b;
+    }
+    center_1 = cv::Point2f(center_1.x / cluster_1.area.size(), center_1.y / cluster_1.area.size());
+    center_2 = cv::Point2f(center_2.x / cluster_2.area.size(), center_2.y / cluster_2.area.size());
+
+    return euclideanDistance(center_1, center_2);
+}
+
 void CircleDetector::eventMaptDetect(const cv::Mat& event_map_no_polarity, const cv::Mat& event_map_positive, const cv::Mat& event_map_negative){
     cv::Mat event_show = cv::Mat::zeros(event_map_no_polarity.rows, event_map_no_polarity.cols, CV_32FC3);
     cv::cvtColor(event_map_no_polarity, event_show, cv::COLOR_GRAY2BGR);
     cv::Mat imgMark = cv::Mat::zeros(event_map_no_polarity.rows, event_map_no_polarity.cols, CV_32FC3);
     cv::cvtColor(event_map_no_polarity, imgMark, cv::COLOR_GRAY2RGB);
+    
+
+    cv::medianBlur(event_map_positive, event_map_positive, 3);
+    cv::medianBlur(event_map_negative, event_map_negative, 3);
     cv::Mat imgPos = cv::Mat::zeros(event_map_no_polarity.rows, event_map_no_polarity.cols, CV_32FC3);
     cv::cvtColor(event_map_positive, imgPos, cv::COLOR_GRAY2RGB);
     cv::Mat imgNeg = cv::Mat::zeros(event_map_no_polarity.rows, event_map_no_polarity.cols, CV_32FC3);
     cv::cvtColor(event_map_negative, imgNeg, cv::COLOR_GRAY2RGB);
-
-    cv::medianBlur(event_map_positive, event_map_positive, 3);
-    cv::medianBlur(event_map_negative, event_map_negative, 3);
     cv::Mat event_map_no_polarity_blurred = cv::Mat::zeros(event_map_no_polarity.rows, event_map_no_polarity.cols, CV_32FC1);
 
     /*
@@ -297,64 +306,6 @@ void CircleDetector::eventMaptDetect(const cv::Mat& event_map_no_polarity, const
         cv::arrowedLine(imgPos, temp_pca.center, temp_pca.center + temp_pca.comp1 * temp_pca.magnitude_comp1, cv::Scalar(0, 200, 0), 3);
         cv::arrowedLine(imgPos, temp_pca.center, temp_pca.center + temp_pca.comp2 * temp_pca.magnitude_comp2, cv::Scalar(0, 0, 200), 3);
         cv::circle(imgPos, temp_pca.center, 5, cv::Scalar(200,  100, 100), -1);
-       
-        /*
-        m_ellipsetemp = cv::fitEllipse(quad);
-        
-        // area restriction 
-		if (m_ellipsetemp.size.width * m_ellipsetemp.size.height > 0.05 * event_map_no_polarity.rows * event_map_no_polarity.cols) continue;
-        if (m_ellipsetemp.size.width * m_ellipsetemp.size.height < 80) continue;
-        
-        ellipse(imgPos, m_ellipsetemp, cv::Scalar(0, 0, 200), 3);
-
-        // angle restriction
-        float angle_min_x = 1000, angle_max_x = -1, angle_min_y = 1000, angle_max_y = -1, angle_now, angle_min, angle_max;
-        float dist_min = 1000, dist_max = -1, dist_now;
-        for (auto point : quad){
-            dist_now = euclideanDistance(point, m_ellipsetemp.center);
-            if (dist_now > dist_max) dist_max = dist_now;
-            if (dist_now < dist_min) dist_min = dist_now;
-
-            angle_now = cv::fastAtan2(point.y - m_ellipsetemp.center.y, point.x - m_ellipsetemp.center.x);
-            if (angle_now > angle_max_x) angle_max_x = angle_now;
-            if (angle_now < angle_min_x) angle_min_x = angle_now;
-            angle_now = cv::fastAtan2(point.x - m_ellipsetemp.center.x, point.y - m_ellipsetemp.center.y);
-            if (angle_now > angle_max_y) angle_max_y = angle_now;
-            if (angle_now < angle_min_y) angle_min_y = angle_now;
-        }
-        
-        if (angle_max_x - angle_min_x < angle_max_y - angle_min_y){
-            angle_max = angle_max_x;
-            angle_min = angle_min_x;
-        }else{
-            angle_max = angle_max_y;
-            angle_min = angle_min_y;
-        }
-
-        float ratio_max = std::abs(dist_max - std::max(m_ellipsetemp.size.width / 2, m_ellipsetemp.size.height / 2)) / std::max(m_ellipsetemp.size.width / 2, m_ellipsetemp.size.height / 2);
-        float ratio_min = std::abs(dist_min - std::min(m_ellipsetemp.size.width / 2, m_ellipsetemp.size.height / 2)) / std::min(m_ellipsetemp.size.width / 2, m_ellipsetemp.size.height / 2);
-        std::cout << "Angle diff: " << angle_max - angle_min << "Angle max: " << angle_max << " min:" << angle_min << std::endl << "Dist max: " << dist_max << " min:" << dist_min << std::endl;
-        std::cout << "Width" << m_ellipsetemp.size.width / 2 << " Height: " << m_ellipsetemp.size.height / 2 << std::endl;
-        std::cout << "Ratio max: " << ratio_max << " min: " << ratio_min << std::endl;
-                
-        if (std::max(ratio_min, ratio_max) > 0.3) {
-            ROS_INFO("Ratio failed");
-        };
-        if (angle_max - angle_min > 200 || angle_max - angle_min < 80) {
-            ROS_INFO("Angle failed");
-        };
-
-        if (std::max(ratio_min, ratio_max) > 0.3) {continue;};
-        if (angle_max - angle_min > 200 || angle_max - angle_min < 80) {continue;};
-        
-        ellipse(imgPos, m_ellipsetemp, cv::Scalar(255, 0, 0), 3);
-       
-        circleInformation temp_circ;
-        temp_circ.height = m_ellipsetemp.size.height;
-        temp_circ.width = m_ellipsetemp.size.width;
-        temp_circ.circle_position = m_ellipsetemp.center;
-        temp_circ.area = quad;
-        candidate_pos.push_back(temp_circ);*/
     }    
     cv::imshow("pos", imgPos);
     cv::waitKey(1);    
@@ -377,85 +328,30 @@ void CircleDetector::eventMaptDetect(const cv::Mat& event_map_no_polarity, const
         cv::arrowedLine(imgNeg, temp_pca.center, temp_pca.center + temp_pca.comp1 * temp_pca.magnitude_comp1, cv::Scalar(0, 200, 0), 3);
         cv::arrowedLine(imgNeg, temp_pca.center, temp_pca.center + temp_pca.comp2 * temp_pca.magnitude_comp2, cv::Scalar(0, 0, 200), 3);
         cv::circle(imgNeg, temp_pca.center, 5, cv::Scalar(200,  100, 100), -1);
-
-        /*
-        m_ellipsetemp = cv::fitEllipse(quad);
-        
-        // area restriction 
-		if (m_ellipsetemp.size.width * m_ellipsetemp.size.height > 0.05 * event_map_no_polarity.rows * event_map_no_polarity.cols) continue;
-        if (m_ellipsetemp.size.width * m_ellipsetemp.size.height < 80) continue;
-
-        // angle restriction
-        float angle_min_x = 1000, angle_max_x = -1, angle_min_y = 1000, angle_max_y = -1, angle_now, angle_min, angle_max;
-        float dist_min = 1000, dist_max = -1, dist_now;
-        for (auto point : quad){
-            dist_now = euclideanDistance(point, m_ellipsetemp.center);
-            if (dist_now > dist_max) dist_max = dist_now;
-            if (dist_now < dist_min) dist_min = dist_now;
-
-            angle_now = cv::fastAtan2(point.y - m_ellipsetemp.center.y, point.x - m_ellipsetemp.center.x);
-            if (angle_now > angle_max_x) angle_max_x = angle_now;
-            if (angle_now < angle_min_x) angle_min_x = angle_now;
-            angle_now = cv::fastAtan2(point.x - m_ellipsetemp.center.x, point.y - m_ellipsetemp.center.y);
-            if (angle_now > angle_max_y) angle_max_y = angle_now;
-            if (angle_now < angle_min_y) angle_min_y = angle_now;
-        }
-        
-        if (angle_max_x - angle_min_x < angle_max_y - angle_min_y){
-            angle_max = angle_max_x;
-            angle_min = angle_min_x;
-        }else{
-            angle_max = angle_max_y;
-            angle_min = angle_min_y;
-        }
-
-        float ratio_max = std::abs(dist_max - std::max(m_ellipsetemp.size.width / 2, m_ellipsetemp.size.height / 2)) / std::max(m_ellipsetemp.size.width / 2, m_ellipsetemp.size.height / 2);
-        float ratio_min = std::abs(dist_min - std::min(m_ellipsetemp.size.width / 2, m_ellipsetemp.size.height / 2)) / std::min(m_ellipsetemp.size.width / 2, m_ellipsetemp.size.height / 2);
-        std::cout << "Angle diff: " << angle_max - angle_min << "Angle max: " << angle_max << " min:" << angle_min << std::endl << "Dist max: " << dist_max << " min:" << dist_min << std::endl;
-        std::cout << "Ratio max: " << ratio_max << " min: " << ratio_min << std::endl;
-                
-        if (std::max(ratio_min, ratio_max) > 0.3) {
-            ROS_INFO("Ratio failed");
-        };
-        if (angle_max - angle_min > 200 || angle_max - angle_min < 80) {
-            ROS_INFO("Angle failed");
-        };
-        
-        ellipse(imgNeg, m_ellipsetemp, cv::Scalar(0, 0, 200), 3);
-
-        if (std::max(ratio_min, ratio_max) > 0.3) {continue;};
-        if (angle_max - angle_min > 200 || angle_max - angle_min < 80) {continue;};
-        
-        ellipse(imgNeg, m_ellipsetemp, cv::Scalar(255, 0, 0), 3);
-        
-        circleInformation temp_circ;
-        temp_circ.height = m_ellipsetemp.size.height;
-        temp_circ.width = m_ellipsetemp.size.width;
-        temp_circ.circle_position = m_ellipsetemp.center;
-        temp_circ.area = quad;
-        candidate_neg.push_back(temp_circ);*/
     }
     cv::imshow("neg", imgNeg);
     cv::waitKey(1); 
     
     candidate_full.clear();
-    for (auto cand_pos : candidate_pos){   
-        cv::cvtColor(event_map_no_polarity, imgMark, cv::COLOR_GRAY2RGB);
-        for (auto p : cand_pos.area){
-            cv::circle(imgMark, p, 1, cv::Scalar(200, 0, 200), -1);
-        }
-        for (auto cand_neg : candidate_neg){
-            // for (auto p : cand_neg.area){
-            //     cv::circle(imgMark, p, 1, cv::Scalar(200, 0, 200), -1);
-            // }
-            // cv::imshow("ellipse", imgMark);
-            // cv::waitKey(0);
-            if (coEllipse(cand_pos, cand_neg)){
-                candidate_full.emplace_back(std::make_pair(cand_pos, cand_neg));
+    while (!candidate_pos.empty()) {
+        current = candidate_pos.front();
+        candidate_pos.pop_front();
+
+        std::sort(candidate_neg.begin(), candidate_neg.end(), [this](const circleInformation& p1, const circleInformation& p2) {
+            return distanceFromTwoClusters(current, p1) < distanceFromTwoClusters(current, p2);
+        });
+
+        for (auto it = candidate_neg.begin(); it != candidate_neg.end();) {
+            if (coEllipse(current, *it)) {
+                candidate_full.emplace_back(std::make_pair(current, *it));
+                it = candidate_neg.erase(it);
                 break;
+            } else {
+                ++it;
             }
         }
     }
+
     candidate_circles.clear();
     for (auto cand_pair : candidate_full){
         std::vector<cv::Point> ellipse_points;
