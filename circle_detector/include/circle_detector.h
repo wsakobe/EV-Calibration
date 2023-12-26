@@ -60,7 +60,7 @@ private:
     pcaInfo pcaAnalysis(std::vector<cv::Point> points);
     double euclideanDistance(const cv::Point2f& p1, const cv::Point2f& p2);
     bool coEllipse(const circleInformation& a, const circleInformation& b);
-    void organizeCircles();
+    void organizeCircles(const cv::Mat& event_map);
 
     ros::NodeHandle nh_;
     ros::Publisher circle_pub_ = nh_.advertise<circle_msgs::circleArray>("/circle_ev/circleArray", 10);;
@@ -69,11 +69,11 @@ private:
 
     int count = 0;
     std::vector<std::vector<cv::Point>> quadArea_pos, quadArea_neg;
-    std::vector<circleInformation> candidate_pos, candidate_neg, onboard_circles;
+    std::vector<circleInformation> candidate_pos, candidate_neg, candidate_circles, onboard_circles;
     std::vector<std::pair<circleInformation, circleInformation>> candidate_full;
     cv::RotatedRect m_ellipsetemp;
 
-    float PCA_high = 20, PCA_low = 3;
+    float PCA_high = 25, PCA_low = 2;
 };
 
 double CircleDetector::euclideanDistance(const cv::Point2f& p1, const cv::Point2f& p2) {
@@ -93,9 +93,10 @@ bool CircleDetector::coEllipse(const circleInformation& a, const circleInformati
     m_ellipsetemp = cv::fitEllipse(ellipse_points);
     
     // size balance restriction
-    if ((std::max(a.area.size(), b.area.size()) - std::min(a.area.size(), b.area.size())) / ellipse_points.size() > 0.2) {
-        return false;
-    }
+    // if ((std::max(a.area.size(), b.area.size()) - std::min(a.area.size(), b.area.size())) / ellipse_points.size() > 0.1) {
+    //     ROS_ERROR("Point number failed");
+    //     return false;
+    // }
 
     // fitting error restriction
     float fit_error = 0.0;
@@ -105,9 +106,13 @@ bool CircleDetector::coEllipse(const circleInformation& a, const circleInformati
         fit_error += (x_rot * x_rot) / (m_ellipsetemp.size.width * m_ellipsetemp.size.width) + (y_rot * y_rot) / (m_ellipsetemp.size.height * m_ellipsetemp.size.height) - 0.25;
     }
     fit_error /= ellipse_points.size();
-    if (fit_error > 0.1) return false;
+    if (fit_error > 0.15){
+        ROS_ERROR("Fitting failed");
+        return false;
+    } 
 
     if (m_ellipsetemp.size.width > sensor_size_.height / std::min(cb.boardHeight, cb.boardWidth) || m_ellipsetemp.size.height > sensor_size_.height / std::min(cb.boardHeight, cb.boardWidth)){
+        ROS_ERROR("Size failed");
         return false;
     }
 
@@ -147,22 +152,23 @@ bool CircleDetector::coEllipse(const circleInformation& a, const circleInformati
         angle_min_b = angle_min_y;
     }
     
+    std::cout << "Angle a: " << angle_max_a << " " << angle_min_a << " Angle b: " << angle_max_b << " " << angle_min_b << std::endl;
     std::cout << "Angle diff a: " << angle_max_a - angle_min_a << std::endl;
     std::cout << "Angle diff b: " << angle_max_b - angle_min_b << std::endl;
     std::cout << "vertical: " << vertical << " dist: " << dist << std::endl;
 
     if (abs(vertical) > 0.4) {
-        ROS_INFO("Vertical failed");
+        ROS_ERROR("Vertical failed");
         return false;
     }
 
     if (dist > sensor_size_.height / std::min(cb.boardHeight, cb.boardWidth)) {
-        ROS_INFO("Dist failed");
+        ROS_ERROR("Dist failed");
         return false;
     }
 
-    if (std::abs(angle_max_a - angle_min_a - angle_max_b + angle_min_b) > 60 || angle_max_a - angle_min_a < 100 || angle_max_b - angle_min_b < 100) {
-        ROS_INFO("Angle failed");
+    if (std::abs(angle_max_a - angle_min_a - angle_max_b + angle_min_b) > 40 || angle_max_a - angle_min_a < 100 || angle_max_b - angle_min_b < 100) {
+        ROS_ERROR("Angle failed");
         return false;
     };
 
@@ -198,7 +204,7 @@ void CircleDetector::connectedComponentLabeling(const cv::Mat& src, std::vector<
             iter++;
         }
     }
-
+    /*
     std::vector<cv::Vec3b> colors(nccomp_area);
     colors[0] = cv::Vec3b(0,0,0); // background pixels remain black.
     for(int i = 1; i < nccomp_area; i++ ) {
@@ -219,7 +225,7 @@ void CircleDetector::connectedComponentLabeling(const cv::Mat& src, std::vector<
         }
     }
     cv::imshow("CCL", img_color);
-    cv::waitKey(1);
+    cv::waitKey(1);*/
 }
 
 CircleDetector::pcaInfo CircleDetector::pcaAnalysis(std::vector<cv::Point> points){
@@ -259,15 +265,15 @@ void CircleDetector::eventMaptDetect(const cv::Mat& event_map_no_polarity, const
     cv::medianBlur(event_map_negative, event_map_negative, 3);
     cv::Mat event_map_no_polarity_blurred = cv::Mat::zeros(event_map_no_polarity.rows, event_map_no_polarity.cols, CV_32FC1);
 
-    // for( int y = 0; y < event_map_positive.rows; y++ ){
-    //     for( int x = 0; x < event_map_positive.cols; x++ ){
-    //         if (event_map_positive.at<float>(y, x) || event_map_negative.at<float>(y, x))
-    //             event_map_no_polarity_blurred.at<float>(y, x) = 1;
-    //     }
-    // }
-    
-    // cv::imshow("full_blur", event_map_no_polarity_blurred * 255);
-    // cv::waitKey(1);
+    /*
+    for( int y = 0; y < event_map_positive.rows; y++ ){
+        for( int x = 0; x < event_map_positive.cols; x++ ){
+            if (event_map_positive.at<float>(y, x) || event_map_negative.at<float>(y, x))
+                event_map_no_polarity_blurred.at<float>(y, x) = 1;
+        }
+    }    
+    cv::imshow("full_blur", event_map_no_polarity_blurred * 255);
+    cv::waitKey(1);*/
 
     cv::Mat event_map_positive_8U, event_map_negative_8U;
     event_map_positive.convertTo(event_map_positive_8U, CV_8UC1);
@@ -291,8 +297,7 @@ void CircleDetector::eventMaptDetect(const cv::Mat& event_map_no_polarity, const
         cv::arrowedLine(imgPos, temp_pca.center, temp_pca.center + temp_pca.comp1 * temp_pca.magnitude_comp1, cv::Scalar(0, 200, 0), 3);
         cv::arrowedLine(imgPos, temp_pca.center, temp_pca.center + temp_pca.comp2 * temp_pca.magnitude_comp2, cv::Scalar(0, 0, 200), 3);
         cv::circle(imgPos, temp_pca.center, 5, cv::Scalar(200,  100, 100), -1);
-          
-
+       
         /*
         m_ellipsetemp = cv::fitEllipse(quad);
         
@@ -436,9 +441,9 @@ void CircleDetector::eventMaptDetect(const cv::Mat& event_map_no_polarity, const
     candidate_full.clear();
     for (auto cand_pos : candidate_pos){   
         cv::cvtColor(event_map_no_polarity, imgMark, cv::COLOR_GRAY2RGB);
-        // for (auto p : cand_pos.area){
-        //     cv::circle(imgMark, p, 1, cv::Scalar(200, 0, 200), -1);
-        // }
+        for (auto p : cand_pos.area){
+            cv::circle(imgMark, p, 1, cv::Scalar(200, 0, 200), -1);
+        }
         for (auto cand_neg : candidate_neg){
             // for (auto p : cand_neg.area){
             //     cv::circle(imgMark, p, 1, cv::Scalar(200, 0, 200), -1);
@@ -451,7 +456,7 @@ void CircleDetector::eventMaptDetect(const cv::Mat& event_map_no_polarity, const
             }
         }
     }
-    onboard_circles.clear();
+    candidate_circles.clear();
     for (auto cand_pair : candidate_full){
         std::vector<cv::Point> ellipse_points;
         ellipse_points.insert(ellipse_points.end(), cand_pair.first.area.begin(), cand_pair.first.area.end());
@@ -463,20 +468,20 @@ void CircleDetector::eventMaptDetect(const cv::Mat& event_map_no_polarity, const
         temp_circ.width = m_ellipsetemp.size.width;
         temp_circ.circle_position = m_ellipsetemp.center;
         temp_circ.area = ellipse_points;
-        onboard_circles.push_back(temp_circ);
+        candidate_circles.push_back(temp_circ);
 
         ellipse(imgMark, m_ellipsetemp, cv::Scalar(0, 255, 255), 6);
         cv::line(imgMark, cvPoint(m_ellipsetemp.center.x - 10, m_ellipsetemp.center.y), cvPoint(m_ellipsetemp.center.x + 10, m_ellipsetemp.center.y), cv::Scalar(0,120,250), 5, 8, 0);	
         cv::line(imgMark, cvPoint(m_ellipsetemp.center.x, m_ellipsetemp.center.y - 10), cvPoint(m_ellipsetemp.center.x, m_ellipsetemp.center.y + 10), cv::Scalar(120,120,250), 5, 8, 0);    
     }
-    if (onboard_circles.size() < cb.boardHeight * cb.boardWidth - 2){
-        return;
-    }
+    // if (candidate_circles.size() < cb.boardHeight * cb.boardWidth - 2){
+    //     return;
+    // }
 
     cv::imshow("ellipse", imgMark);
     cv::waitKey(1);
 
-    organizeCircles();
+    organizeCircles(event_map_no_polarity);
 
     // Publish circle messages
     for (auto circle : onboard_circles){
@@ -493,7 +498,7 @@ void CircleDetector::eventMaptDetect(const cv::Mat& event_map_no_polarity, const
     return;
 }
 
-void CircleDetector::organizeCircles(){
+void CircleDetector::organizeCircles(const cv::Mat& event_map){
     
 }
 

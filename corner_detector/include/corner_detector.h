@@ -190,8 +190,9 @@ private:
     void extractCorner(const cv::Mat& input_image);
     void cornerPreFilter(const cv::Mat& image);
     void templateMatching(const cv::Mat& image);
-    void organizeCorner();
-    float Distance(cv::Point2f line_point1, cv::Point2f line_point2, cv::Point2f line_point_through, cornerInformation corner);
+    void organizeCorner(const cv::Mat& image);
+    float distanceFromLine(cv::Point2f input_point, cv::Point2f line_point, cv::Vec2f line_direction);
+    float distanceFromTwoPoints(cv::Point2f point_1, cv::Point2f point_2);
 
     ros::NodeHandle nh;
     image_transport::Subscriber image_sub_;
@@ -221,8 +222,10 @@ private:
 	cv::Mat coeffs, roots;
 
     // corner organization
-    float T_dis = 2.0, T_angle = 10.0;
-    std::vector<cornerInformation> candidate_line1, candidate_line2, onboard_corners;
+    float T_dis = 10.0, T_angle = 15.0;
+    std::vector<cornerInformation> candidate_line1, candidate_line2, candidate_corners, onboard_corners;
+    bool b_width_line_found, b_height_line_found;
+    cv::Vec2f width_direction_, height_direction_;
 };
 
 ImageProcessor::ImageProcessor(ros::NodeHandle& nh) {
@@ -255,13 +258,13 @@ void ImageProcessor::imageCallback(const sensor_msgs::ImageConstPtr& msg) {
 
 void ImageProcessor::extractCorner(const cv::Mat& input_image) {
     corners.clear();
+    cv::imshow("Origin", input_image);
+    cv::waitKey(1);
 
     cornerPreFilter(input_image);
-    std::cout << "Pre: " << corners.size() << std::endl;
     templateMatching(input_image);
-    std::cout << "Template: " << corners.size() << std::endl;
-    organizeCorner();
-    std::cout << "Org: " << onboard_corners.size() << std::endl;
+    organizeCorner(input_image);
+    
     if (onboard_corners.size() < cb.boardHeight * cb.boardWidth - 3) return;
     std::vector<cv::Point2f> corners_refined;
     for (int i = 0; i < onboard_corners.size(); i++){
@@ -271,14 +274,13 @@ void ImageProcessor::extractCorner(const cv::Mat& input_image) {
     for (int i = 0; i < corners_refined.size(); i++){
         onboard_corners[i].corner_position_subpixel = corners_refined[i];
     }
-    cv::Mat image_plot(input_image.rows, input_image.cols, CV_32FC3);
-    cv::cvtColor(input_image, image_plot, cv::COLOR_GRAY2RGB);
-    for (int i = 0; i < onboard_corners.size(); i++){
-        cv::circle(image_plot, onboard_corners[i].corner_position, 10, cv::Scalar(120, 120, 10), 3);
-    }
+    // cv::Mat image_plot(input_image.rows, input_image.cols, CV_32FC3);
+    // cv::cvtColor(input_image, image_plot, cv::COLOR_GRAY2RGB);
+    // for (int i = 0; i < onboard_corners.size(); i++){
+    //     cv::circle(image_plot, onboard_corners[i].corner_position, 10, cv::Scalar(120, 120, 10), 3);
+    // }
 
-    cv::imshow("Detected corners", image_plot);
-    cv::waitKey(1);
+    
 
     //Publish corner message
     corner_msgs::cornerArray corner_array;
@@ -400,17 +402,39 @@ void ImageProcessor::templateMatching(const cv::Mat& image){
     return;
 }
 
-float ImageProcessor::Distance(cv::Point2f line_point1, cv::Point2f line_point2, cv::Point2f line_point_through, cornerInformation corner){
-    float A = line_point2.y - line_point1.y;
-    float B = line_point1.x - line_point2.x;
-    float C = line_point2.x * line_point_through.y -line_point1.x * line_point_through.y + line_point1.y * line_point_through.x - line_point2.y * line_point_through.x;
+float ImageProcessor::distanceFromLine(cv::Point2f input_point, cv::Point2f line_point, cv::Vec2f line_direction){
+    cv::Point2f vector_to_input = input_point - line_point;
+    double vector_magnitude = cv::norm(vector_to_input);
+    cv::Point2f unit_vector = vector_to_input / vector_magnitude;
 
-    float distance = std::abs(A * corner.corner_position_subpixel.x + B * corner.corner_position_subpixel.y + C) / std::sqrt(A * A + B * B);
+    if (cv::norm(line_direction) != 1){
+        line_direction /= cv::norm(line_direction);
+    }
+
+    double dot_product = unit_vector.dot(line_direction);
+    double distance = std::abs(vector_magnitude * std::sin(std::acos(dot_product)));
+
     return distance;
 }
 
-void ImageProcessor::organizeCorner(){
+inline float ImageProcessor::distanceFromTwoPoints(cv::Point2f point_1, cv::Point2f point_2){
+    return std::sqrt((point_1.x - point_2.x) * (point_1.x - point_2.x) + (point_1.y - point_2.y) * (point_1.y - point_2.y));
+}
+
+bool sortByX(const cornerInformation& a, const cornerInformation& b) {
+    return a.corner_position.x < b.corner_position.x;
+}
+
+bool sortByY(const cornerInformation& a, const cornerInformation& b) {
+    return a.corner_position.y < b.corner_position.y;
+}
+
+void ImageProcessor::organizeCorner(const cv::Mat& image){
+    cv::Mat image_plot = cv::Mat::zeros(image.size(), CV_32FC3);;
+    cv::cvtColor(image, image_plot, cv::COLOR_GRAY2BGR);
+    
     onboard_corners.clear();
+    candidate_corners.clear();
     if (corners.size() < cb.boardHeight * cb.boardWidth) return;
 
     // sort by scores
@@ -419,88 +443,141 @@ void ImageProcessor::organizeCorner(){
                   return a.response_score > b.response_score;
               });
     
-    cornerInformation template_corner = corners[0];
-    onboard_corners.emplace_back(template_corner);
+    cornerInformation best_corner = corners[0];
+
+    cv::circle(image_plot, best_corner.corner_position, 20, cv::Scalar(120, 120, 120), 3);
+  
+    candidate_corners.emplace_back(best_corner);
     for (auto it = corners.begin() + 1; it != corners.end(); it++) {
-        if ((abs(it->angle_black_edge - template_corner.angle_black_edge) < T_angle && abs(it->angle_white_edge - template_corner.angle_white_edge) < T_angle) || (abs(it->angle_black_edge - template_corner.angle_white_edge) < T_angle && abs(it->angle_white_edge - template_corner.angle_black_edge) < T_angle)) {
-            onboard_corners.emplace_back(*it);
+        if ((abs(it->angle_black_edge - best_corner.angle_black_edge) < T_angle && abs(it->angle_white_edge - best_corner.angle_white_edge) < T_angle) || (abs(it->angle_black_edge - best_corner.angle_white_edge) < T_angle && abs(it->angle_white_edge - best_corner.angle_black_edge) < T_angle)) {
+            candidate_corners.emplace_back(*it);
         }
-        else if ((abs(abs(it->angle_black_edge - template_corner.angle_black_edge) - 180) < T_angle && abs(it->angle_white_edge - template_corner.angle_white_edge) < T_angle) || (abs(it->angle_black_edge - template_corner.angle_black_edge) < T_angle && abs(abs(it->angle_white_edge - template_corner.angle_white_edge) - 180) < T_angle) || (abs(abs(it->angle_black_edge - template_corner.angle_white_edge) - 180) < T_angle && abs(it->angle_white_edge - template_corner.angle_black_edge) < T_angle) || (abs(it->angle_black_edge - template_corner.angle_white_edge) < T_angle && abs(abs(it->angle_white_edge - template_corner.angle_black_edge) - 180) < T_angle)){
-            onboard_corners.emplace_back(*it);
+        else if ((abs(abs(it->angle_black_edge - best_corner.angle_black_edge) - 180) < T_angle && abs(it->angle_white_edge - best_corner.angle_white_edge) < T_angle) || (abs(it->angle_black_edge - best_corner.angle_black_edge) < T_angle && abs(abs(it->angle_white_edge - best_corner.angle_white_edge) - 180) < T_angle) || (abs(abs(it->angle_black_edge - best_corner.angle_white_edge) - 180) < T_angle && abs(it->angle_white_edge - best_corner.angle_black_edge) < T_angle) || (abs(it->angle_black_edge - best_corner.angle_white_edge) < T_angle && abs(abs(it->angle_white_edge - best_corner.angle_black_edge) - 180) < T_angle)){
+            candidate_corners.emplace_back(*it);
         }
-        if (onboard_corners.size() == cb.boardHeight * cb.boardWidth) break;
     }
-    /*
-    // sort by y-axis
-    std::sort(corners.begin(), corners.end(), 
-              [](const cornerInformation &a, const cornerInformation &b) {
-                  return a.corner_position_subpixel.y < b.corner_position_subpixel.y;
+    
+    std::vector<std::pair<float, cornerInformation>> dist_from_bestcorner;
+    for (int i = 1; i <= candidate_corners.size(); i++) {
+        dist_from_bestcorner.push_back(std::make_pair(distanceFromTwoPoints(best_corner.corner_position, candidate_corners[i].corner_position), candidate_corners[i]));
+    }
+    // sort by distance
+    std::sort(dist_from_bestcorner.begin(), dist_from_bestcorner.end(), 
+              [](const std::pair<float, cornerInformation> &a, const std::pair<float, cornerInformation> &b) {
+                  return a.first < b.first;
+              });
+    b_width_line_found = false;
+    b_height_line_found = false;
+    float min_dist_ = dist_from_bestcorner[0].first;
+    for (int i = 0; i < dist_from_bestcorner.size(); i++){
+        if (dist_from_bestcorner[i].first > 1.2 * min_dist_) break;
+        //cv::circle(image_plot, dist_from_bestcorner[i].second.corner_position, 10, cv::Scalar(255, 0, 0), 3);
+
+        int fitted_num = 0;
+        cv::Vec2f direction_(best_corner.corner_position.x - dist_from_bestcorner[i].second.corner_position.x, best_corner.corner_position.y - dist_from_bestcorner[i].second.corner_position.y);
+
+        for (int j = i + 1; j < dist_from_bestcorner.size(); j++){
+            if (distanceFromLine(dist_from_bestcorner[j].second.corner_position, best_corner.corner_position, direction_) / distanceFromTwoPoints(dist_from_bestcorner[j].second.corner_position, best_corner.corner_position) < 0.05){
+                fitted_num++;
+                cv::circle(image_plot, dist_from_bestcorner[j].second.corner_position, 10, cv::Scalar(0, 230, 0), 3);
+            }
+        }
+        if (!b_width_line_found && fitted_num == cb.boardWidth - 2){
+            cv::Vec2f width_line = (dist_from_bestcorner[i].second.corner_position.y - best_corner.corner_position.y, dist_from_bestcorner[i].second.corner_position.x - best_corner.corner_position.x);
+            width_direction_ = direction_;
+            b_width_line_found = true;
+        }
+        if (!b_height_line_found && fitted_num == cb.boardHeight - 2){
+            cv::Vec2f height_line = (dist_from_bestcorner[i].second.corner_position.y - best_corner.corner_position.y, dist_from_bestcorner[i].second.corner_position.x - best_corner.corner_position.x);
+            height_direction_ = direction_;
+            b_height_line_found = true;
+        }
+        
+        if (b_width_line_found && b_height_line_found){
+            ROS_INFO("Found width and height");
+            break;
+        } 
+    }
+    std::cout << "Height direction: " << height_direction_[0] << " " << height_direction_[1] << std::endl;
+    std::cout << "Width direction:  " << width_direction_[0] << " " << width_direction_[1] << std::endl;
+
+    std::vector<std::vector<cornerInformation>> corner_cluster;
+    std::vector<cornerInformation> height_closest_corners, width_corners;
+    height_closest_corners.push_back(best_corner);
+    for (int i = 0; i < dist_from_bestcorner.size(); i++){
+        if (distanceFromLine(dist_from_bestcorner[i].second.corner_position, best_corner.corner_position, height_direction_) / distanceFromTwoPoints(dist_from_bestcorner[i].second.corner_position, best_corner.corner_position) < 0.05){
+            height_closest_corners.push_back(dist_from_bestcorner[i].second);
+        }
+    }
+    // for (auto p:height_closest_corners){
+    //     cv::circle(image_plot, p.corner_position, 7, cv::Scalar(0, 0, 250), 3);
+    // }
+    for (auto height_corner : height_closest_corners){
+        width_corners.clear();
+        width_corners.push_back(height_corner);
+        //cv::circle(image_plot, height_corner.corner_position, 15, cv::Scalar(0, 250, 250), 3);
+        for (auto corner : dist_from_bestcorner){
+            if (distanceFromLine(corner.second.corner_position, height_corner.corner_position, width_direction_) / distanceFromTwoPoints(corner.second.corner_position, height_corner.corner_position) < 0.1){
+                width_corners.push_back(corner.second);
+            }
+        }
+        if (width_corners.size() < cb.boardWidth) return;
+        corner_cluster.push_back(width_corners);
+    }
+    if (corner_cluster.size() < cb.boardHeight) return;
+    // for (auto a : corner_cluster){
+    //     std::cout << a.size() << std::endl;
+    //     cv::Vec3b color = cv::Vec3b(rand()%256, rand()%256, rand()%256);
+    //     for (auto p:a){
+    //         cv::circle(image_plot, p.corner_position, 10, color, 3);
+    //     }
+    // }
+    // cv::imshow("org corners", image_plot);
+    // cv::waitKey(0);
+    
+    //sort twice
+    for (auto& cluster : corner_cluster) {
+        std::sort(cluster.begin(), cluster.end(), std::abs(width_direction_[0]) > std::abs(width_direction_[1]) ? sortByX : sortByY);
+    }
+
+    std::sort(corner_cluster.begin(), corner_cluster.end(), std::abs(width_direction_[0]) > std::abs(width_direction_[1]) ?
+              [](const std::vector<cornerInformation>& a, const std::vector<cornerInformation>& b) {
+                  return a[0].corner_position.y < b[0].corner_position.y;
+              } :
+              [](const std::vector<cornerInformation>& a, const std::vector<cornerInformation>& b) {
+                  return a[0].corner_position.x > b[0].corner_position.x;
               });
     
-    corner_start = corners;
-    while (corner_start.size() >= boardHeight * boardWidth){
-        candidate_line1.clear();
-        candidate_line2.clear();
-
-        cornerInformation start_point = corner_start[0];
-        corner_start.erase(corner_start.begin());
-        corner_temp = corner_start;
-
-        // sort by x-axis
-        std::sort(corner_temp.begin(), corner_temp.end(), 
-                [](const cornerInformation &a, const cornerInformation &b) {
-                    return a.corner_position_subpixel.x < b.corner_position_subpixel.x;
-                });
-        cornerInformation candidate_left  = corner_temp[0];     // left-down point
-        cornerInformation candidate_right = corner_temp.back(); // right-down point
-        
-        candidate_line1.emplace_back(start_point);
-        candidate_line2.emplace_back(start_point);
-        candidate_line1.emplace_back(corner_temp[0]);
-        candidate_line2.emplace_back(corner_temp.back());
-        onboard_corners.emplace_back(start_point);
-        onboard_corners.emplace_back(corner_temp[0]);
-        onboard_corners.emplace_back(corner_temp.back());
-        corner_temp.erase(corner_temp.begin());
-        corner_temp.erase(corner_temp.end());
-
-        for (auto it = corner_temp.begin(); it != corner_temp.end();) {
-            if (Distance(start_point.corner_position_subpixel, candidate_left.corner_position_subpixel, start_point.corner_position_subpixel, *it) < T_dis) {
-                candidate_line1.emplace_back(*it);
-                onboard_corners.emplace_back(*it);
-                it = corner_temp.erase(it);
-            } else {
-                ++it;
-            }
+    cv::Point2f sample_direction_width  = corner_cluster[0][0].corner_position - corner_cluster[0][1].corner_position;
+    cv::Point2f sample_direction_height = corner_cluster[0][0].corner_position - corner_cluster[1][0].corner_position;
+    cv::Point sample_position_1 = (sample_direction_width + sample_direction_height) * 0.08;
+    cv::Point sample_position_2 = -(sample_direction_width + sample_direction_height) * 0.08;
+    cv::Point sample_position_3 = (sample_direction_width - sample_direction_height) * 0.08;
+    cv::Point sample_position_4 = -(sample_direction_width - sample_direction_height) * 0.08;
+    bool b_reverse = false;
+    if (image.at<float>(corner_cluster[0][0].corner_position + sample_position_1) + image.at<float>(corner_cluster[0][0].corner_position + sample_position_2) - (image.at<float>(corner_cluster[0][0].corner_position + sample_position_3) + image.at<float>(corner_cluster[0][0].corner_position + sample_position_4)) < 0.3){
+        b_reverse = true;
+    }
+    for (int i = 0; i < corner_cluster.size(); i++){
+        for (int j = 0; j < corner_cluster[i].size(); j++){
+            cornerInformation temp_corner;
+            temp_corner = corner_cluster[i][j];
+            temp_corner.grid_pose.x = b_reverse ? j : cb.boardWidth - j - 1;
+            temp_corner.grid_pose.y = b_reverse ? i : cb.boardHeight - i - 1;
+            onboard_corners.push_back(temp_corner);
         }
-        for (auto it = corner_temp.begin(); it != corner_temp.end();) {
-            if (Distance(start_point.corner_position_subpixel, candidate_right.corner_position_subpixel, start_point.corner_position_subpixel, *it) < T_dis) {
-                candidate_line2.emplace_back(*it);
-                onboard_corners.emplace_back(*it);
-                it = corner_temp.erase(it); 
-            } else {
-                ++it;
-            }
-        }
-        if (candidate_line1.size() < std::min(boardHeight, boardWidth) || candidate_line2.size() < std::min(boardHeight, boardWidth)) continue;
-        if (candidate_line1.size() * candidate_line2.size() == boardHeight * boardWidth){
-            for (auto it = candidate_line2.begin() + 1; it != candidate_line2.end(); ++it) { // skip the start point
-                for (auto iter = corner_temp.begin(); iter != corner_temp.end();) {
-                    if (Distance(start_point.corner_position_subpixel, candidate_left.corner_position_subpixel, it->corner_position_subpixel, *iter) < T_dis) {
-                        onboard_corners.emplace_back(*iter);
-                        iter = corner_temp.erase(iter);
-                    } else {
-                        ++iter;
-                    }
-                }
-            }
-        }
-        if (onboard_corners.size() < boardHeight * boardWidth) continue;
-        else {
-
-        }
-    } */  
-
+    }
+    cv::circle(image_plot, corner_cluster[0][0].corner_position + sample_position_1, 5, cv::Scalar(255, 0, 0), -1);
+    cv::circle(image_plot, corner_cluster[0][0].corner_position + sample_position_2, 5, cv::Scalar(100, 0, 0), -1);
+    cv::circle(image_plot, corner_cluster[0][0].corner_position + sample_position_3, 5, cv::Scalar(0, 250, 0), -1);
+    cv::circle(image_plot, corner_cluster[0][0].corner_position + sample_position_4, 5, cv::Scalar(0, 0, 250), -1);
+    for (auto a : onboard_corners){
+        cv::Vec3b color = cv::Vec3b(rand()%256, rand()%256, rand()%256);
+        cv::circle(image_plot, a.corner_position, 10, color, 3);
+        cv::putText(image_plot, std::to_string(a.grid_pose.y * cb.boardWidth + a.grid_pose.x), a.corner_position + cv::Point(3, 3), cv::FONT_HERSHEY_PLAIN, 5, cv::Scalar(255, 0, 0), 3);
+    }
+    cv::imshow("org corners", image_plot);
+    cv::waitKey(1);
 }
 
 } // namespace corner_detector
