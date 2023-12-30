@@ -1,0 +1,4 @@
+<launch>
+    <rosparam file="$(find estimator)/config/estimator.yaml" command="load"/>
+    <node pkg="estimator" type="estimator" name="estimator" respawn="false" output="screen"/> 
+</launch>

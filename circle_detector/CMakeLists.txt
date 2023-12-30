@@ -1,12 +1,9 @@
 cmake_minimum_required(VERSION 3.0.2)
 project(circle_detector)
 
-## Compile as C++11, supported in ROS Kinetic and newer
-# add_compile_options(-std=c++11)
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_FLAGS_RELEASE "-O3 -g -pthread")
 
-## Find catkin macros and libraries
-## if COMPONENTS list like find_package(catkin REQUIRED COMPONENTS xyz)
-## is used, also find other catkin packages
 find_package(OpenCV 3 REQUIRED)
 find_package(catkin REQUIRED COMPONENTS
   circle_msgs

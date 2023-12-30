@@ -279,8 +279,7 @@ void ImageProcessor::extractCorner(const cv::Mat& input_image) {
     // for (int i = 0; i < onboard_corners.size(); i++){
     //     cv::circle(image_plot, onboard_corners[i].corner_position, 10, cv::Scalar(120, 120, 10), 3);
     // }
-
-    
+   
 
     //Publish corner message
     corner_msgs::cornerArray corner_array;
@@ -458,7 +457,7 @@ void ImageProcessor::organizeCorner(const cv::Mat& image){
     }
     
     std::vector<std::pair<float, cornerInformation>> dist_from_bestcorner;
-    for (int i = 1; i <= candidate_corners.size(); i++) {
+    for (int i = 1; i < candidate_corners.size(); i++) {
         dist_from_bestcorner.push_back(std::make_pair(distanceFromTwoPoints(best_corner.corner_position, candidate_corners[i].corner_position), candidate_corners[i]));
     }
     // sort by distance
