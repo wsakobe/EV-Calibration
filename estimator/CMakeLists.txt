@@ -55,6 +55,7 @@ list(APPEND thirdparty_libraries
 add_executable(estimator_node 
    src/estimator_node.cpp
    src/estimator/estimator_manager.cpp
+   src/estimator/initialization.cpp
  )
  target_link_libraries(estimator_node
    ${thirdparty_libraries}
