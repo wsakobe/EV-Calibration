@@ -6,25 +6,37 @@
 #include <opencv2/highgui.hpp>
 #include <opencv2/imgproc.hpp>
 
-#include <dvs_msgs/Event.h>
-#include <dvs_msgs/EventArray.h>
 #include <std_msgs/Empty.h>
 #include <std_msgs/Time.h>
 #include <circle_msgs/circle.h>
 #include <circle_msgs/circleArray.h>
+#include <sensor_msgs/Image.h>
+#include <cv_bridge/cv_bridge.h>
+#include <image_transport/image_transport.h>
+#include <sensor_msgs/image_encodings.h>
 
 #include <vector>
 #include <thread>
 #include <mutex>
+#include <iostream>
+#include <chrono>
 
-template<typename T>
-void info(T msg) {
-    std::cout << msg << std::endl;
+
+void measureTimeElapsed() {
+    static std::chrono::time_point<std::chrono::steady_clock> last_time = std::chrono::steady_clock::now();
+    auto current_time = std::chrono::steady_clock::now();
+
+    // 计算时间差
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(current_time - last_time);
+    
+    // 输出时间差
+    std::cout << "Time elapsed since last call: " << duration.count() << " milliseconds" << std::endl;
+
+    // 更新上次调用的时间点为当前时间
+    last_time = current_time;
 }
 
 namespace circle_detector{
-using EventQueue = std::deque<dvs_msgs::Event>;
-cv::Size sensor_size_;
 
 struct Chessboard{
     int boardHeight, boardWidth;
@@ -49,10 +61,18 @@ struct circleInformation {
 };
 
 public:
-    CircleDetector(ros::NodeHandle& nh) : nh_(nh){};
+    CircleDetector(ros::NodeHandle& nh) : nh_(nh){
+        image_transport::ImageTransport it(nh);
+        image_sub_ = it.subscribe("/event_map/image", 1, &CircleDetector::imageCallback, this);
+        nh_.param("BoardHeight", cb.boardHeight, 3);
+        nh_.param("BoardWidth", cb.boardWidth, 6);
+    };
+
     ~CircleDetector(){
         circle_pub_.shutdown();
+        image_sub_.shutdown();
     };
+    void imageCallback(const sensor_msgs::ImageConstPtr& msg);
     void eventMaptDetect(const cv::Mat& event_map_no_polarity, const cv::Mat& event_map_positive, const cv::Mat& event_map_negative);
     
 private:
@@ -73,9 +93,12 @@ private:
     }
 
     ros::NodeHandle nh_;
+    image_transport::Subscriber image_sub_;
     ros::Publisher circle_pub_ = nh_.advertise<circle_msgs::circleArray>("/circle_ev/circleArray", 10);;
     circle_msgs::circle circle_msg;
     circle_msgs::circleArray circle_array;
+
+    cv::Size sensor_size_;
 
     int count = 0;
     std::vector<std::vector<cv::Point>> quadArea_pos, quadArea_neg;
@@ -107,9 +130,9 @@ bool CircleDetector::coEllipse(const circleInformation& a, const circleInformati
     m_ellipsetemp = cv::fitEllipse(ellipse_points);
     
     // pca magnitude restriction
-    std::cout << "PCA: " << a.pca_res.magnitude_comp1 << " " << b.pca_res.magnitude_comp1 << std::endl;
+    //std::cout << "PCA: " << a.pca_res.magnitude_comp1 << " " << b.pca_res.magnitude_comp1 << std::endl;
     if (std::abs(a.pca_res.magnitude_comp1 - b.pca_res.magnitude_comp1) / (a.pca_res.magnitude_comp1 + b.pca_res.magnitude_comp1) > 0.3){
-        ROS_ERROR("PCA failed");
+        //ROS_ERROR("PCA failed");
         return false;
     }
 
@@ -121,15 +144,15 @@ bool CircleDetector::coEllipse(const circleInformation& a, const circleInformati
         fit_error += std::abs((x_rot * x_rot) / (m_ellipsetemp.size.width * m_ellipsetemp.size.width) + (y_rot * y_rot) / (m_ellipsetemp.size.height * m_ellipsetemp.size.height) - 0.25);
     }
     fit_error /= ellipse_points.size();
-    std::cout << "Fit error: " << fit_error << std::endl;
+    //std::cout << "Fit error: " << fit_error << std::endl;
     if (fit_error > 0.2){
-        ROS_ERROR("Fitting failed");
+        //ROS_ERROR("Fitting failed");
         return false;
     } 
     
     // ellipse size restriction
     if (m_ellipsetemp.size.width > sensor_size_.height / std::min(cb.boardHeight, cb.boardWidth) || m_ellipsetemp.size.height > sensor_size_.height / std::min(cb.boardHeight, cb.boardWidth)){
-        ROS_ERROR("Size failed");
+        //ROS_ERROR("Size failed");
         return false;
     }
     
@@ -168,19 +191,19 @@ bool CircleDetector::coEllipse(const circleInformation& a, const circleInformati
         angle_min_b = angle_min_y;
     }
     
-    std::cout << "Angle a: " << angle_max_a << " " << angle_min_a << " Angle b: " << angle_max_b << " " << angle_min_b << std::endl;
-    std::cout << "Angle diff a: " << angle_max_a - angle_min_a << std::endl;
-    std::cout << "Angle diff b: " << angle_max_b - angle_min_b << std::endl;
+    //std::cout << "Angle a: " << angle_max_a << " " << angle_min_a << " Angle b: " << angle_max_b << " " << angle_min_b << std::endl;
+    //std::cout << "Angle diff a: " << angle_max_a - angle_min_a << std::endl;
+    //std::cout << "Angle diff b: " << angle_max_b - angle_min_b << std::endl;
     if (std::abs(angle_max_a - angle_min_a - angle_max_b + angle_min_b) > 55 || angle_max_a - angle_min_a < 100 || angle_max_b - angle_min_b < 100) {
-        ROS_ERROR("Angle failed");
+        //ROS_ERROR("Angle failed");
         return false;
     };
 
     // distance restriction
     double dist = euclideanDistance(a.pca_res.center, b.pca_res.center);
-    std::cout << "Dist: " << dist << std::endl;
+    //std::cout << "Dist: " << dist << std::endl;
     if (dist > sensor_size_.height / std::min(cb.boardHeight, cb.boardWidth) || dist < 10) {
-        ROS_ERROR("Dist failed");
+        //ROS_ERROR("Dist failed");
         return false;
     }
     
@@ -192,7 +215,6 @@ bool CircleDetector::coEllipse(const circleInformation& a, const circleInformati
     //     ROS_ERROR("Vertical failed");
     //     return false;
     // }
-    ROS_INFO("Passed");
     return true;
 }
 
@@ -292,29 +314,27 @@ void CircleDetector::eventMaptDetect(const cv::Mat& event_map_no_polarity, const
     cv::Mat imgMark = cv::Mat::zeros(event_map_no_polarity.rows, event_map_no_polarity.cols, CV_32FC3);
     cv::cvtColor(event_map_no_polarity, imgMark, cv::COLOR_GRAY2RGB);
     
-
-    cv::medianBlur(event_map_positive, event_map_positive, 3);
-    cv::medianBlur(event_map_negative, event_map_negative, 3);
-    cv::Mat imgPos = cv::Mat::zeros(event_map_no_polarity.rows, event_map_no_polarity.cols, CV_32FC3);
-    cv::cvtColor(event_map_positive, imgPos, cv::COLOR_GRAY2RGB);
-    cv::Mat imgNeg = cv::Mat::zeros(event_map_no_polarity.rows, event_map_no_polarity.cols, CV_32FC3);
-    cv::cvtColor(event_map_negative, imgNeg, cv::COLOR_GRAY2RGB);
+    //cv::medianBlur(event_map_positive, event_map_positive, 3);
+    //cv::medianBlur(event_map_negative, event_map_negative, 3);
+    //cv::Mat imgPos = cv::Mat::zeros(event_map_no_polarity.rows, event_map_no_polarity.cols, CV_32FC3);
+    //cv::cvtColor(event_map_positive, imgPos, cv::COLOR_GRAY2RGB);
+    //cv::Mat imgNeg = cv::Mat::zeros(event_map_no_polarity.rows, event_map_no_polarity.cols, CV_32FC3);
+    //cv::cvtColor(event_map_negative, imgNeg, cv::COLOR_GRAY2RGB);
     cv::Mat event_map_no_polarity_blurred = cv::Mat::zeros(event_map_no_polarity.rows, event_map_no_polarity.cols, CV_32FC1);
 
-    /*
-    for( int y = 0; y < event_map_positive.rows; y++ ){
-        for( int x = 0; x < event_map_positive.cols; x++ ){
+    /*for(int y = 0; y < event_map_positive.rows; y++){
+        for(int x = 0; x < event_map_positive.cols; x++){
             if (event_map_positive.at<float>(y, x) || event_map_negative.at<float>(y, x))
                 event_map_no_polarity_blurred.at<float>(y, x) = 1;
         }
     }    
     cv::imshow("full_blur", event_map_no_polarity_blurred * 255);
     cv::waitKey(1);*/
-
+    
     cv::Mat event_map_positive_8U, event_map_negative_8U;
     event_map_positive.convertTo(event_map_positive_8U, CV_8UC1);
     event_map_negative.convertTo(event_map_negative_8U, CV_8UC1);
-
+   
     candidate_pos.clear();
     connectedComponentLabeling(event_map_positive_8U, quadArea_pos);
     for (auto quad : quadArea_pos){
@@ -327,16 +347,13 @@ void CircleDetector::eventMaptDetect(const cv::Mat& event_map_no_polarity, const
         temp_circ.area = quad;
         candidate_pos.push_back(temp_circ);
 
-        for (auto p : quad){
-            cv::circle(imgPos, p, 1, cv::Scalar(200,  0, 0), -1);
-        }        
-        cv::arrowedLine(imgPos, temp_pca.center, temp_pca.center + temp_pca.comp1 * temp_pca.magnitude_comp1, cv::Scalar(0, 200, 0), 3);
-        cv::arrowedLine(imgPos, temp_pca.center, temp_pca.center + temp_pca.comp2 * temp_pca.magnitude_comp2, cv::Scalar(0, 0, 200), 3);
-        cv::circle(imgPos, temp_pca.center, 5, cv::Scalar(200,  100, 100), -1);
+        //cv::arrowedLine(imgPos, temp_pca.center, temp_pca.center + temp_pca.comp1 * temp_pca.magnitude_comp1, cv::Scalar(0, 200, 0), 3);
+        //cv::arrowedLine(imgPos, temp_pca.center, temp_pca.center + temp_pca.comp2 * temp_pca.magnitude_comp2, cv::Scalar(0, 0, 200), 3);
+        //cv::circle(imgPos, temp_pca.center, 5, cv::Scalar(200,  100, 100), -1);
     }    
-    cv::imshow("pos", imgPos);
-    cv::waitKey(1);    
-    
+    //cv::imshow("pos", imgPos);
+    //cv::waitKey(1);  
+
     candidate_neg.clear();
     connectedComponentLabeling(event_map_negative_8U, quadArea_neg);
     for (auto quad : quadArea_neg){
@@ -349,43 +366,28 @@ void CircleDetector::eventMaptDetect(const cv::Mat& event_map_no_polarity, const
         temp_circ.area = quad;
         candidate_neg.push_back(temp_circ);
 
-        for (auto p : quad){
-            cv::circle(imgNeg, p, 1, cv::Scalar(200,  0, 0), -1);
-        }        
-        cv::arrowedLine(imgNeg, temp_pca.center, temp_pca.center + temp_pca.comp1 * temp_pca.magnitude_comp1, cv::Scalar(0, 200, 0), 3);
-        cv::arrowedLine(imgNeg, temp_pca.center, temp_pca.center + temp_pca.comp2 * temp_pca.magnitude_comp2, cv::Scalar(0, 0, 200), 3);
-        cv::circle(imgNeg, temp_pca.center, 5, cv::Scalar(200,  100, 100), -1);
+        //cv::arrowedLine(imgNeg, temp_pca.center, temp_pca.center + temp_pca.comp1 * temp_pca.magnitude_comp1, cv::Scalar(0, 200, 0), 3);
+        //cv::arrowedLine(imgNeg, temp_pca.center, temp_pca.center + temp_pca.comp2 * temp_pca.magnitude_comp2, cv::Scalar(0, 0, 200), 3);
+        //cv::circle(imgNeg, temp_pca.center, 5, cv::Scalar(200,  100, 100), -1);
     }
-    cv::imshow("neg", imgNeg);
-    cv::waitKey(1); 
-    
+    //cv::imshow("neg", imgNeg);
+    //cv::waitKey(1); 
+
     candidate_full.clear();
     while (!candidate_pos.empty()) {
-        cv::cvtColor(event_map_no_polarity, imgMark, cv::COLOR_GRAY2RGB);
         current = candidate_pos.front();
         candidate_pos.pop_front();
-        for (auto p : current.area){
-            cv::circle(imgMark, p, 1, cv::Scalar(200,  0, 0), -1);
-        }
         std::sort(candidate_neg.begin(), candidate_neg.end(), [this](const circleInformation& p1, const circleInformation& p2) {
             return distanceFromTwoClusters(current, p1) < distanceFromTwoClusters(current, p2);
         });
 
         for (auto it = candidate_neg.begin(); it != candidate_neg.end();) {
-            
-            for (auto p : it->area){
-                cv::circle(imgMark, p, 1, cv::Scalar(0,  0, 255), -1);
-            }
             if (coEllipse(current, *it)) {
                 candidate_full.emplace_back(std::make_pair(current, *it));
                 it = candidate_neg.erase(it);
-                //cv::imshow("ellipse", imgMark);
-                //cv::waitKey(0);
                 break;
             } else {
                 ++it;
-                //cv::imshow("ellipse", imgMark);
-                //cv::waitKey(0);
             }
         }
     }
@@ -404,7 +406,7 @@ void CircleDetector::eventMaptDetect(const cv::Mat& event_map_no_polarity, const
         temp_circ.area = ellipse_points;
         candidate_circles.push_back(temp_circ);
 
-        ellipse(imgMark, m_ellipsetemp, cv::Scalar(0, 255, 0), 2);
+        //ellipse(imgMark, m_ellipsetemp, cv::Scalar(0, 255, 0), 2);
         //cv::line(imgMark, cvPoint(m_ellipsetemp.center.x - 5, m_ellipsetemp.center.y), cvPoint(m_ellipsetemp.center.x + 5, m_ellipsetemp.center.y), cv::Scalar(0,120,250), 1, 8, 0);	
         //cv::line(imgMark, cvPoint(m_ellipsetemp.center.x, m_ellipsetemp.center.y - 5), cvPoint(m_ellipsetemp.center.x, m_ellipsetemp.center.y + 5), cv::Scalar(120,120,250), 1, 8, 0);    
     }
@@ -412,11 +414,12 @@ void CircleDetector::eventMaptDetect(const cv::Mat& event_map_no_polarity, const
         return;
     }
 
-    cv::imshow("ellipse", imgMark);
-    cv::waitKey(1);
+    //cv::imshow("ellipse", imgMark);
+    //cv::waitKey(1);
 
     organizeCircles(event_map_no_polarity);
 
+    circle_array.circles.clear();
     // Publish circle messages
     for (auto circle : onboard_circles){
         circle_msg.x = circle.circle_position.x;
@@ -499,8 +502,6 @@ void CircleDetector::organizeCircles(const cv::Mat& event_map){
             break;
         } 
     }
-    std::cout << "Height direction: " << height_direction_[0] << " " << height_direction_[1] << std::endl;
-    std::cout << "Width direction:  " << width_direction_[0] << " " << width_direction_[1] << std::endl;
 
     std::vector<std::vector<circleInformation>> circle_cluster;
     std::vector<circleInformation> height_closest_circles, width_circles;
@@ -568,226 +569,41 @@ void CircleDetector::organizeCircles(const cv::Mat& event_map){
     cv::waitKey(1);
 }
 
-class EventQueueMat 
-{
-    struct Job{
-        size_t start_col_, end_col_;
-        size_t start_row_, end_row_;
-        size_t i_thread_;
-        ros::Time trig_time;
-        cv::Mat* event_no_polarity_;
-        cv::Mat* event_positive_;
-        cv::Mat* event_negative_;
-    };
-
-public:
-    EventQueueMat(int width, int height, int queueLen){
-        width_ = width;
-        height_ = height;
-        queueLen_ = queueLen;
-        eqMat_ = std::vector<EventQueue>(width_ * height_, EventQueue());
-    }
-
-    void insertEvent(const dvs_msgs::Event& e){
-        if(!insideImage(e.x, e.y))
-            return;
-        else{
-            EventQueue& eq = getEventQueue(e.x, e.y);
-            eq.push_back(e);
-            while(eq.size() > queueLen_)
-                eq.pop_front();
+void CircleDetector::imageCallback(const sensor_msgs::ImageConstPtr& msg) {
+    try {
+        static bool first_init = true;
+        if (first_init){
+            sensor_size_.height = msg->height;
+            sensor_size_.width = msg->width;
         }
-    }
+        cv::Mat image = cv_bridge::toCvShare(msg, msg->encoding)->image;
+        if (image.channels() == 3)
+            cv::cvtColor(image, image, cv::COLOR_BGR2GRAY);
 
-    void generateEventMap(const ros::Time& triggered_time, CircleDetector& cd){
-        cv::Mat event_map_no_polarity = cv::Mat::zeros(cv::Size(width_, height_), CV_32F);
-        cv::Mat event_map_positive = cv::Mat::zeros(cv::Size(width_, height_), CV_32F);
-        cv::Mat event_map_negative = cv::Mat::zeros(cv::Size(width_, height_), CV_32F);
-        for(size_t x = 0; x < width_; ++x){
-            for(size_t y = 0; y < height_; ++y)
+        cv::Mat event_no_pola = cv::Mat::zeros(image.rows, image.cols, CV_32FC1);
+        cv::Mat event_positive = cv::Mat::zeros(image.rows, image.cols, CV_32FC1);
+        cv::Mat event_negative = cv::Mat::zeros(image.rows, image.cols, CV_32FC1);
+        for(size_t x = 0; x < sensor_size_.width; ++x){
+            for(size_t y = 0; y < sensor_size_.height; ++y)
             {
-                EventQueue& eq = getEventQueue(x, y);
-                if (!eq.empty() && eq.back().ts > triggered_time){
-                    event_map_no_polarity.at<float>(y, x) = 1;
-                    if (eq.back().polarity){
-                        event_map_positive.at<float>(y, x) = 1;
-                    }else{
-                        event_map_negative.at<float>(y, x) = 1;
-                    }
+                if ((image.at<float>(y, x) - 0.5) > 0.4){
+                    event_no_pola.at<float>(y, x) = 255;
+                    event_positive.at<float>(y, x) = 255;
+                }
+                else if ((image.at<float>(y, x) - 0.5) < -0.4){
+                    event_no_pola.at<float>(y, x) = 255;
+                    event_negative.at<float>(y, x) = 255;
                 }
             }
         }
-        cd.eventMaptDetect(event_map_no_polarity, event_map_positive, event_map_negative);
-        ROS_INFO("Event map generated");
+        ROS_INFO("Receive eventmap");
+        eventMaptDetect(event_no_pola, event_positive, event_negative);
     }
-
-    void generateEventMap_hyperthread(const ros::Time& triggered_time, CircleDetector& cd){
-        ROS_INFO("Event map begin");
-
-        cv::Mat event_map_no_polarity = cv::Mat::zeros(cv::Size(width_, height_), CV_32F);
-        cv::Mat event_map_positive = cv::Mat::zeros(cv::Size(width_, height_), CV_32F);
-        cv::Mat event_map_negative = cv::Mat::zeros(cv::Size(width_, height_), CV_32F);
-
-        // distribute jobs
-        int NUM_THREAD_TS = 10;
-        std::vector<Job> jobs(NUM_THREAD_TS);
-        size_t num_col_per_thread = width_ / NUM_THREAD_TS;
-        size_t res_col = width_ % NUM_THREAD_TS;
-        for(size_t i = 0; i < NUM_THREAD_TS; i++)
-        {
-            jobs[i].i_thread_ = i;
-            jobs[i].start_col_ = num_col_per_thread * i;
-            if(i == NUM_THREAD_TS - 1)
-                jobs[i].end_col_ = jobs[i].start_col_ + num_col_per_thread - 1 + res_col;
-            else
-                jobs[i].end_col_ = jobs[i].start_col_ + num_col_per_thread - 1;
-            jobs[i].start_row_ = 0;
-            jobs[i].end_row_ = height_ - 1;
-            jobs[i].trig_time = triggered_time;
-            jobs[i].event_no_polarity_ = &event_map_no_polarity;
-            jobs[i].event_positive_ = &event_map_positive;
-            jobs[i].event_negative_ = &event_map_negative;
-        }
-
-        // hyper thread processing
-        std::vector<std::thread> threads;
-        threads.reserve(NUM_THREAD_TS);
-        for(size_t i = 0; i < NUM_THREAD_TS; i++)
-            threads.emplace_back(std::bind(&EventQueueMat::thread, this, jobs[i]));
-        for(auto& thread:threads)
-            if(thread.joinable())
-                thread.join();
-        ROS_INFO("Generated");
-        cd.eventMaptDetect(event_map_no_polarity, event_map_positive, event_map_negative);        
-    }
-
-    void clear(){
-      eqMat_.clear();
-    }
-
-    bool insideImage(const size_t x, const size_t y){
-      return !(x < 0 || x >= width_ || y < 0 || y >= height_);
-    }
-
-    inline EventQueue& getEventQueue(const size_t x, const size_t y){
-      return eqMat_[x + width_ * y];
-    }
-
-    size_t width_;
-    size_t height_;
-    size_t queueLen_;
-    std::vector<EventQueue> eqMat_;
-
-private:
-    void thread(Job &job){
-        size_t start_col = job.start_col_;
-        size_t end_col = job.end_col_;
-        size_t start_row = job.start_row_;
-        size_t end_row = job.end_row_;
-        size_t i_thread = job.i_thread_;
-        ros::Time trig_time = job.trig_time;
-        cv::Mat& event_map_no_polarity = *job.event_no_polarity_;
-        cv::Mat& event_map_positive = *job.event_positive_;
-        cv::Mat& event_map_negative = *job.event_negative_;
-
-        for(size_t y = start_row; y <= end_row; y++){
-            for(size_t x = start_col; x <= end_col; x++){
-                EventQueue& eq = getEventQueue(x, y);
-                if (!eq.empty() && eq.back().ts > trig_time){
-                    event_map_no_polarity.at<float>(y, x) = 1;
-                    if (eq.back().polarity){
-                        event_map_positive.at<float>(y, x) = 1;
-                    }else{
-                        event_map_negative.at<float>(y, x) = 1;
-                    }
-                }
-            }
-        }
-    }
-};
-
-class EventProcessor {
-public:
-    EventProcessor(ros::NodeHandle& nh);
-    ~EventProcessor(){event_sub_.shutdown();};
-
-private:
-    void eventsCallback(const dvs_msgs::EventArray::ConstPtr& msg);
-    void init(int width, int height);
-    void clearEventQueue();
-
-    ros::NodeHandle nh_;
-    ros::Subscriber event_sub_;
-    CircleDetector cd_;
-
-    bool bSensorInitialized_ = false;
-    int max_event_queue_length_ = 1;
-    int output_event_num_;
-    ros::Time trig_time_ = ros::Time::now();
-
-    // containers
-    EventQueue events_;
-    std::shared_ptr<EventQueueMat> pEventQueueMat_;
-};  
-
-EventProcessor::EventProcessor(ros::NodeHandle& nh) : cd_(nh){
-    event_sub_ = nh.subscribe("/dvs/events", 0, &EventProcessor::eventsCallback, this);
-    nh.param("BoardHeight", cb.boardHeight, 3);
-    nh.param("BoardWidth", cb.boardWidth, 6);
-    
-    // Judge if event queue is empty
-    if(pEventQueueMat_){ 
-        pEventQueueMat_->clear();
+    catch (cv_bridge::Exception& e) {
+        ROS_ERROR("cv_bridge exception: %s", e.what());
+        return;
     }
 }
-
-void EventProcessor::eventsCallback(const dvs_msgs::EventArray::ConstPtr& msg){
-    if(!bSensorInitialized_){
-        init(msg->width, msg->height);
-        output_event_num_ = (int)(msg->width * msg->height * 0.2);
-    }     
-
-    for(const dvs_msgs::Event& e : msg->events){        
-        events_.emplace_back(e);
-        int i = events_.size() - 2;
-        while(i >= 0 && events_[i].ts > e.ts)
-        {
-            events_[i + 1] = events_[i];
-            i--;
-        }
-        events_[i + 1] = e;
-
-        const dvs_msgs::Event& last_event = events_.back();
-        pEventQueueMat_->insertEvent(last_event);
-        
-        if (events_.size() >= output_event_num_){
-            std::cout << trig_time_.sec << " " << trig_time_.nsec << std::endl;
-            pEventQueueMat_->generateEventMap_hyperthread(trig_time_, cd_);
-            trig_time_ = last_event.ts;
-            ROS_INFO("Event map message launched");
-            clearEventQueue();
-        }
-    }
-}
-
-void EventProcessor::init(int width, int height){
-    sensor_size_ = cv::Size(width, height);
-    bSensorInitialized_ = true;
-    pEventQueueMat_.reset(new EventQueueMat(width, height, max_event_queue_length_));
-    ROS_INFO("Sensor size: (%d x %d)", sensor_size_.width, sensor_size_.height);
-}
-
-void EventProcessor::clearEventQueue()
-{
-    /*static constexpr size_t MAX_EVENT_QUEUE_LENGTH = 5000000;
-    if (events_.size() > MAX_EVENT_QUEUE_LENGTH)
-    {
-      size_t remove_events = events_.size() - MAX_EVENT_QUEUE_LENGTH;
-      events_.erase(events_.begin(), events_.begin() + remove_events);
-    }*/
-    events_.clear();
-}
-
 
 } // namespace circle_detector
 

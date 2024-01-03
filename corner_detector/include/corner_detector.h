@@ -1,15 +1,17 @@
 #pragma once
 
 #include "ros/ros.h"
+#include <opencv2/opencv.hpp>
+
 #include <sensor_msgs/Image.h>
 #include <cv_bridge/cv_bridge.h>
 #include <image_transport/image_transport.h>
 #include <sensor_msgs/image_encodings.h>
-#include <opencv2/opencv.hpp>
-#include "string.h"
-#include <sys/stat.h>
 #include "corner_msgs/corner.h"
 #include "corner_msgs/cornerArray.h"
+
+#include "string.h"
+#include <sys/stat.h>
 
 #define PI 3.1415926
 
@@ -182,6 +184,7 @@ public:
     ImageProcessor(ros::NodeHandle& nh);
     ~ImageProcessor(){
         image_sub_.shutdown();
+        corner_pub_.shutdown();
     };
 
     void imageCallback(const sensor_msgs::ImageConstPtr& msg);
@@ -341,6 +344,9 @@ void ImageProcessor::cornerPreFilter(const cv::Mat& image){
 }
 
 void ImageProcessor::templateMatching(const cv::Mat& image){
+    cv::Mat image_plot = cv::Mat::zeros(image.size(), CV_32FC3);;
+    cv::cvtColor(image, image_plot, cv::COLOR_GRAY2BGR);
+
     for (int i = 0; i < corners.size(); i++) {
         cv::Rect rect(corners[i].corner_position.x - ct.maskSurface, corners[i].corner_position.y - ct.maskSurface, ct.maskSurfaceL, ct.maskSurfaceL);
         img_hypersurface = image(rect).clone();
@@ -397,7 +403,11 @@ void ImageProcessor::templateMatching(const cv::Mat& image){
         else
             it++;
     }
-
+    for (auto p:corners){
+        cv::circle(image_plot, p.corner_position, 20, cv::Scalar(120, 120, 120), 3);
+    }
+    cv::imshow("1", image_plot);
+    cv::waitKey(1);
     return;
 }
 

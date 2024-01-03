@@ -1,0 +1,3 @@
+<launch>
+    <node pkg="eventmap_generator" type="generator" name="generator" respawn="false" output="screen"/> 
+</launch>

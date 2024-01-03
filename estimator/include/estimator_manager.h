@@ -20,6 +20,8 @@ public:
     void optimization();
 
 private:
+    void performEstimator();
+
     ros::NodeHandle nh_;
     ros::Subscriber corner_sub_;
     ros::Subscriber circle_sub_;

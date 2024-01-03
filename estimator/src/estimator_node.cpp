@@ -25,23 +25,24 @@ using namespace estimator;
 
 int main(int argc, char **argv)
 {
-  google::InitGoogleLogging(argv[0]);
+    google::InitGoogleLogging(argv[0]);
 
-  ros::init(argc, argv, "estimator");
-  ros::NodeHandle nh("~");
+    ros::init(argc, argv, "estimator");
+    ros::NodeHandle nh("~");
 
-  std::string config_path;
-  nh.param<std::string>("config_path", config_path, "estimator.yaml");
-  ROS_INFO("Odometry load %s.", config_path.c_str());
+    std::string config_path;
+    nh.param<std::string>("config_path", config_path, "/config/estimator.yaml");
+    ROS_INFO("Estimator load %s.", config_path.c_str());
+    YAML::Node config_node = YAML::LoadFile(config_path);
+    std::string log_path = config_node["log_path"].as<std::string>();
+    FLAGS_log_dir = log_path;
+    FLAGS_colorlogtostderr = true;
+    LOG(INFO) << "Start Estimator";
 
-  YAML::Node config_node = YAML::LoadFile(config_path);
-  std::string log_path = config_node["log_path"].as<std::string>();
-  FLAGS_log_dir = log_path;
-  FLAGS_colorlogtostderr = true;
-  LOG(INFO) << "Start Estimator";
+    EstimatorManager estimator_manager(config_node, nh);
 
-  EstimatorManager estimator_manager(config_node, nh);
+    ros::spin();
 
-  return 0;
+    return 0;
 }
 

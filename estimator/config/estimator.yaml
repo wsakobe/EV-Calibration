@@ -1,1 +1,9 @@
-init_window_size : 10
+log_path: /root/.ros/log
+init_window_size: 8
+
+conv_cam_width: 1280
+conv_cam_height: 1024
+ev_cam_width: 346
+ev_cam_height: 260
+
+square_size: 48.0 #unit:mm
