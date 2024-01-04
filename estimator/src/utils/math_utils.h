@@ -22,7 +22,7 @@
 // #include "sophus_utils.hpp"
 #include "parameter_struct.h"
 
-namespace ctrlvio
+namespace estimator
 {
 
   inline PoseData XYThetaToPoseData(double x, double y, double theta,
@@ -65,4 +65,4 @@ namespace ctrlvio
     euler *= 180 / M_PI;
   }
 
-} // namespace ctrlvio
+} // namespace estimator

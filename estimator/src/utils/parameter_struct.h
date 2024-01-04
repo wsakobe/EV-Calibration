@@ -25,7 +25,7 @@
 #include <utils/sophus_utils.hpp>
 // #include <sophus/se3.hpp>
 
-namespace ctrlvio
+namespace estimator
 {
 
 #define RESET "\033[0m"
@@ -159,4 +159,4 @@ namespace ctrlvio
     double t_offset;
   };
 
-} // namespace ctrlvio
+} // namespace estimator

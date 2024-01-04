@@ -15,13 +15,21 @@ EstimatorManager::EstimatorManager(const YAML::Node &yaml_node, ros::NodeHandle&
     est_initializer.square_size = yaml_node["square_size"].as<float>();
 }
 
+EstimatorManager::~EstimatorManager(){
+    //shutdown every nodes
+    circle_sub_.shutdown();
+    corner_sub_.shutdown();
+
+    //TODO pub nodes
+}
+
 void EstimatorManager::performEstimator(){
     static bool first_inside = true;
     if (first_inside){
         ROS_ERROR("Success initialized!");
         first_inside = false;
         //TODO initialize trajectory
-
+        setInitialState();
     }
     else{
         //calculate the pose
@@ -77,6 +85,10 @@ void EstimatorManager::circleArrayCallback(const circle_msgs::circleArray& msg){
             performEstimator();
         }        
     }
+    
+}
+
+void EstimatorManager::setInitialState(){
     
 }
 

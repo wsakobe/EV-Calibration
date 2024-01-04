@@ -41,7 +41,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "spline_common.h"
 #include <Eigen/Dense>
 
-namespace ctrlvio
+namespace estimator
 {
 
   /// @brief Helper for implementing Lie group and Euclidean b-splines in ceres of
@@ -245,16 +245,16 @@ namespace ctrlvio
   template <int _N>
   const typename CeresSplineHelper<_N>::MatN
       CeresSplineHelper<_N>::base_coefficients_ =
-          ctrlvio::computeBaseCoefficients<_N, double>();
+          estimator::computeBaseCoefficients<_N, double>();
 
   template <int _N>
   const typename CeresSplineHelper<_N>::MatN
       CeresSplineHelper<_N>::blending_matrix_ =
-          ctrlvio::computeBlendingMatrix<_N, double, false>();
+          estimator::computeBlendingMatrix<_N, double, false>();
 
   template <int _N>
   const typename CeresSplineHelper<_N>::MatN
       CeresSplineHelper<_N>::cumulative_blending_matrix_ =
-          ctrlvio::computeBlendingMatrix<_N, double, true>();
+          estimator::computeBlendingMatrix<_N, double, true>();
 
-} // namespace ctrlvio
+} // namespace estimator

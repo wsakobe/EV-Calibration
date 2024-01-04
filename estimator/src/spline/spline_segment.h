@@ -24,7 +24,7 @@
 #include <cstdint>
 #include <iomanip>
 
-namespace ctrlvio
+namespace estimator
 {
 
   // Define time types
@@ -190,4 +190,4 @@ namespace ctrlvio
     }
   };
 
-} // namespace ctrlvio
+} // namespace estimator

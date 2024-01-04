@@ -24,7 +24,7 @@
 #include <ceres/iteration_callback.h>
 #include <glog/logging.h>
 
-namespace ctrlvio
+namespace estimator
 {
 
   class CheckStateCallback : public ceres::IterationCallback
@@ -107,4 +107,4 @@ namespace ctrlvio
     size_t iteration_;
   };
 
-} // namespace ctrlvio
+} // namespace estimator

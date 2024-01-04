@@ -11,6 +11,8 @@ find_package(catkin REQUIRED COMPONENTS
   std_msgs
   geometry_msgs
   nav_msgs
+  pcl_conversions
+  pcl_ros
   visualization_msgs
   eigen_conversions
 )
@@ -46,17 +48,25 @@ list(APPEND thirdparty_libraries
         ${Boost_LIBRARIES}
         ${catkin_LIBRARIES}
         ${OpenCV_LIBS}
+        ${PCL_LIBRARIES}
         ${CERES_LIBRARIES}
 )
 
 ######################
 ### Estimator
 ######################
+
+add_library(spline_lib src/spline/trajectory.cpp)
+target_link_libraries(spline_lib ${thirdparty_libraries})
+
 add_executable(estimator 
    src/estimator_node.cpp
    src/estimator/estimator_manager.cpp
    src/estimator/initialization.cpp
+   src/estimator/trajectory_manager.cpp
+   src/estimator/trajectory_estimator.cpp
  )
  target_link_libraries(estimator
+   spline_lib
    ${thirdparty_libraries}
  )

@@ -46,7 +46,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <array>
 #include <sophus_lib/so3.hpp>
 
-namespace ctrlvio
+namespace estimator
 {
 
   /// @brief Uniform cummulative B-spline for SO(3) of order N
@@ -423,4 +423,4 @@ namespace ctrlvio
       So3Spline<_N, _Scalar>::blending_matrix_ =
           computeBlendingMatrix<_N, _Scalar, true>();
 
-} // namespace ctrlvio
+} // namespace estimator

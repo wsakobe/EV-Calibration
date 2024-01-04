@@ -5,13 +5,14 @@
 #include <utils/yaml_utils.h>
 
 #include "initialization.h"
+#include "trajectory_manager.h"
 
 namespace estimator{
 
 class EstimatorManager{
 public:
     EstimatorManager(const YAML::Node& yaml_node, ros::NodeHandle& nh);
-    ~EstimatorManager(){}
+    ~EstimatorManager();
     
     void cornerArrayCallback(const corner_msgs::cornerArray& msg);
     void circleArrayCallback(const circle_msgs::circleArray& msg);
@@ -21,12 +22,14 @@ public:
 
 private:
     void performEstimator();
+    void setInitialState();
 
     ros::NodeHandle nh_;
     ros::Subscriber corner_sub_;
     ros::Subscriber circle_sub_;
 
     Initializer est_initializer;
+    TrajectoryManager::Ptr trajectory_manager_;
 };
 
 };

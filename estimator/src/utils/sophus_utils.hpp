@@ -43,13 +43,13 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <sophus_lib/sim3.hpp>
 #include "eigen_utils.hpp"
 
-namespace ctrlvio
+namespace estimator
 {
 
   using SO3d = Sophus::SO3<double>;
   using SE3d = Sophus::SE3<double>;
 
-} // namespace ctrlvio
+} // namespace estimator
 
 namespace Sophus
 {

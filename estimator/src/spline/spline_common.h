@@ -41,7 +41,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <Eigen/Dense>
 #include <cstdint>
 
-namespace ctrlvio
+namespace estimator
 {
 
   inline const int SplineOrder = 4;
@@ -152,4 +152,4 @@ namespace ctrlvio
     return base_coefficients.template cast<_Scalar>();
   }
 
-} // namespace ctrlvio
+} // namespace estimator

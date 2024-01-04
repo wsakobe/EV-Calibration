@@ -45,7 +45,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <array>
 
-namespace ctrlvio
+namespace estimator
 {
 
   /// @brief Uniform B-spline for SE(3) of order N. Internally uses an SO(3) (\ref
@@ -552,4 +552,4 @@ namespace ctrlvio
     int64_t dt_ns_; ///< Knot interval in nanoseconds
   };
 
-} // namespace ctrlvio
+} // namespace estimator

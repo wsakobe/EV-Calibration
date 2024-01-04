@@ -44,7 +44,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <Eigen/Dense>
 #include <array>
 
-namespace ctrlvio
+namespace estimator
 {
 
   template <int _DIM, int _N, typename _Scalar = double>
@@ -330,4 +330,4 @@ namespace ctrlvio
       RdSpline<_DIM, _N, _Scalar>::blending_matrix_ =
           computeBlendingMatrix<_N, _Scalar, false>();
 
-} // namespace ctrlvio
+} // namespace estimator
