@@ -119,6 +119,11 @@ private:
     corner_msgs::cornerArray last_corner;
     circle_msgs::circleArray last_circle;
     int legal_corner_size, legal_circle_size;
+
+    cv::Mat convCameraMatrix, convDistCoeffs;
+    std::vector<cv::Mat> convRvecs, convTvecs;
+    cv::Mat evCameraMatrix, evDistCoeffs;
+    std::vector<cv::Mat> evRvecs, evTvecs;
 };
 
 };

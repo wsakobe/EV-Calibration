@@ -20,7 +20,7 @@ EstimatorManager::~EstimatorManager(){
     circle_sub_.shutdown();
     corner_sub_.shutdown();
 
-    //TODO pub nodes
+    //TODO shutdown pub nodes
 }
 
 void EstimatorManager::performEstimator(){
@@ -28,6 +28,8 @@ void EstimatorManager::performEstimator(){
     if (first_inside){
         ROS_ERROR("Success initialized!");
         first_inside = false;
+        //TODO calculate T_conv_event
+
         //TODO initialize trajectory
         setInitialState();
     }
@@ -52,8 +54,9 @@ void EstimatorManager::cornerArrayCallback(const corner_msgs::cornerArray& msg){
         if (est_initializer.judgeBufferStatus(CONV_CAM)){
             est_initializer.processConv();
             if (est_initializer.convInitialSucc()){
-                //TODO store information
                 ROS_INFO("Conv camera initialized");
+                //TODO store information
+
             }
         }
     }
@@ -90,6 +93,24 @@ void EstimatorManager::circleArrayCallback(const circle_msgs::circleArray& msg){
 
 void EstimatorManager::setInitialState(){
     
+    trajectory_manager_->SetSystemState();
+
+    int64_t t_image0 = vio_initializer_.timestamps[0] * S_TO_NS;
+    trajectory_->SetDataStartTime(t_image0);
+
+    const auto &imu_data_buf = imu_initializer_->GetIMUData();
+    for (auto const &imu_data : imu_data_buf)
+    {
+      if (imu_data.timestamp < t_image0)
+        continue;
+      trajectory_manager_->AddIMUData(imu_data);
+    }
+
+    SO3d R0(initial_state.q);
+    for (size_t i = 0; i <= trajectory_->numKnots(); i++) // only 4 control points at the very beginning
+    {
+      trajectory_->setKnotSO3(R0, i);
+    }
 }
 
 };

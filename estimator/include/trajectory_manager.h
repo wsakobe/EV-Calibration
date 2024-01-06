@@ -15,6 +15,7 @@ public:
     TrajectoryManager(const YAML::Node &node, Trajectory::Ptr trajectory);
 
     void extendTrajectory(int64_t max_time);
+    void setOriginalPose();
 
 private:
     Trajectory::Ptr trajectory_;

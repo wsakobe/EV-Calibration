@@ -15,8 +15,6 @@ void Initializer::processConv(){
         corner_world_cluster.emplace_back(corner_world);
     }
     
-    cv::Mat convCameraMatrix, convDistCoeffs;
-    std::vector<cv::Mat> convRvecs, convTvecs;
     double rms_conv = cv::calibrateCamera(corner_world_cluster, corner_image_cluster, conv_cam_size, convCameraMatrix, convDistCoeffs, convRvecs, convTvecs);
     std::cout << "Conv P: " << convCameraMatrix << std::endl << convDistCoeffs << std::endl << "ReErr: " << rms_conv;
 
@@ -39,8 +37,6 @@ void Initializer::processEv(){
         circle_world_cluster.emplace_back(circle_world);
     }
     
-    cv::Mat evCameraMatrix, evDistCoeffs;
-    std::vector<cv::Mat> evRvecs, evTvecs;
     double rms_ev = cv::calibrateCamera(circle_world_cluster, circle_image_cluster, ev_cam_size, evCameraMatrix, evDistCoeffs, evRvecs, evTvecs);
     std::cout << "Event P: " << evCameraMatrix << std::endl << evDistCoeffs << std::endl << "ReErr: " << rms_ev;
 
