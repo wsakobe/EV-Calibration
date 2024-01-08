@@ -99,6 +99,7 @@ private:
     circle_msgs::circleArray circle_array;
 
     cv::Size sensor_size_;
+    ros::Time timestamp;
 
     int count = 0;
     std::vector<std::vector<cv::Point>> quadArea_pos, quadArea_neg;
@@ -320,16 +321,16 @@ void CircleDetector::eventMaptDetect(const cv::Mat& event_map_no_polarity, const
     //cv::cvtColor(event_map_positive, imgPos, cv::COLOR_GRAY2RGB);
     //cv::Mat imgNeg = cv::Mat::zeros(event_map_no_polarity.rows, event_map_no_polarity.cols, CV_32FC3);
     //cv::cvtColor(event_map_negative, imgNeg, cv::COLOR_GRAY2RGB);
-    cv::Mat event_map_no_polarity_blurred = cv::Mat::zeros(event_map_no_polarity.rows, event_map_no_polarity.cols, CV_32FC1);
+    /*cv::Mat event_map_no_polarity_blurred = cv::Mat::zeros(event_map_no_polarity.rows, event_map_no_polarity.cols, CV_32FC1);
 
-    /*for(int y = 0; y < event_map_positive.rows; y++){
+    for(int y = 0; y < event_map_positive.rows; y++){
         for(int x = 0; x < event_map_positive.cols; x++){
             if (event_map_positive.at<float>(y, x) || event_map_negative.at<float>(y, x))
                 event_map_no_polarity_blurred.at<float>(y, x) = 1;
         }
-    }    
-    cv::imshow("full_blur", event_map_no_polarity_blurred * 255);
-    cv::waitKey(1);*/
+    }    */
+    cv::imshow("full_blur", event_map_no_polarity * 255);
+    cv::waitKey(1);
     
     cv::Mat event_map_positive_8U, event_map_negative_8U;
     event_map_positive.convertTo(event_map_positive_8U, CV_8UC1);
@@ -419,6 +420,9 @@ void CircleDetector::eventMaptDetect(const cv::Mat& event_map_no_polarity, const
 
     organizeCircles(event_map_no_polarity);
 
+    if (onboard_circles.size() != cb.boardHeight * cb.boardWidth){
+        return;
+    }
     circle_array.circles.clear();
     // Publish circle messages
     for (auto circle : onboard_circles){
@@ -426,9 +430,10 @@ void CircleDetector::eventMaptDetect(const cv::Mat& event_map_no_polarity, const
         circle_msg.y = circle.circle_position.y;
         circle_msg.x_grid = circle.grid_pose.x;
         circle_msg.y_grid = circle.grid_pose.y;
-        circle_msg.timestamp = 0;
+        circle_msg.timestamp = timestamp;
         circle_array.circles.push_back(circle_msg);
     }
+    circle_array.header.stamp = timestamp;
     circle_pub_.publish(circle_array);
     ROS_INFO("Publishing circle message");
 
@@ -597,6 +602,7 @@ void CircleDetector::imageCallback(const sensor_msgs::ImageConstPtr& msg) {
             }
         }
         ROS_INFO("Receive eventmap");
+        timestamp = msg->header.stamp;
         eventMaptDetect(event_no_pola, event_positive, event_negative);
     }
     catch (cv_bridge::Exception& e) {

@@ -21,6 +21,9 @@ void Initializer::processConv(){
     if (rms_conv < 1){
         ROS_INFO("Conv cam initial succ");
         b_conv_initialized = true;
+    }else{
+        ROS_INFO("Conv cam initial failed, restart again");
+        corner_buffer_.clear();
     }
 }
 
@@ -47,6 +50,74 @@ void Initializer::processEv(){
         ROS_INFO("Ev cam initial failed, restart again");
         circle_buffer_.clear();
     }
+}
+
+void Initializer::solveRelativePose(const corner_msgs::cornerArray& features, const cv::Mat& Intrinsic, const cv::Mat& distCoeffs, cv::Mat& Transformation){
+    std::vector<cv::Point2f> feature_image; 
+    std::vector<cv::Point3f> feature_world;
+    for (auto corner:features.corners){
+        feature_image.emplace_back(cv::Point2f(corner.x, corner.y));
+        feature_world.emplace_back(cv::Point3f(corner.x_grid, corner.y_grid, 0) * square_size);
+    }
+    cv::Mat rvec, tvec;
+    cv::solvePnP(feature_world, feature_image, Intrinsic, distCoeffs, rvec, tvec, false, cv::SOLVEPNP_EPNP);
+    
+    cv::Mat rotationMat;
+    cv::Rodrigues(rvec, rotationMat);
+    cv::Mat transformationMat;
+    cv::hconcat(rotationMat, tvec, Transformation);
+    cv::Mat_<double> last_row = (cv::Mat_<double>(1, 4) << 0, 0, 0, 1);
+    cv::vconcat(Transformation, last_row, Transformation);
+
+    std::cout << rotationMat << std::endl << tvec << std::endl << Transformation << std::endl;
+}
+
+void Initializer::solveRelativePose(const circle_msgs::circleArray& features, const cv::Mat& Intrinsic, const cv::Mat& distCoeffs, cv::Mat& Transformation){
+    std::vector<cv::Point2f> feature_image; 
+    std::vector<cv::Point3f> feature_world;
+    for (auto circle:features.circles){
+        feature_image.emplace_back(cv::Point2f(circle.x, circle.y));
+        feature_world.emplace_back(cv::Point3f(circle.x_grid, circle.y_grid, 0) * square_size);
+    }
+    cv::Mat rvec, tvec;
+    cv::solvePnP(feature_world, feature_image, Intrinsic, distCoeffs, rvec, tvec, false, cv::SOLVEPNP_EPNP);
+    
+    cv::Mat rotationMat;
+    cv::Rodrigues(rvec, rotationMat);
+    cv::Mat transformationMat;
+    cv::hconcat(rotationMat, tvec, Transformation);
+    cv::Mat_<double> last_row = (cv::Mat_<double>(1, 4) << 0, 0, 0, 1);
+    cv::vconcat(Transformation, last_row, Transformation);
+
+    std::cout << rotationMat << std::endl << tvec << std::endl << Transformation << std::endl;
+}
+
+SO3d Mat2So3(cv::Mat& rotationMat){
+    Eigen::Matrix3d eigenRotationMat;
+    cv::cv2eigen(rotationMat, eigenRotationMat);
+    Sophus::SO3d so3(eigenRotationMat);
+    return so3;
+}
+
+void Initializer::estimateInitialExtrinsic(){
+    for (size_t i = 0; i < corner_buffer_.size(); ++i){
+        ros::Time time_ = corner_buffer_[i].timestamp;
+        for (size_t j = 0; j < circle_buffer_.size(); ++j){
+            ros::Duration time_interval = time_ - circle_buffer_[j].header.stamp;
+            std::cout << time_interval.toSec() << std::endl;
+            if (time_interval.toSec() < 0.05){
+                cv::Mat T_ev, T_c;
+                solveRelativePose(circle_buffer_[i], evCameraMatrix, evDistCoeffs, T_ev);
+                solveRelativePose(corner_buffer_[j], convCameraMatrix, convDistCoeffs, T_c);
+                cv::Mat T = T_ev * T_c.inv();
+                //T_ev2conv = SE3d(R_ev2conv, p_ev2conv);
+                std::cout << "Extrinsic params guess:\n" << T << std::endl;
+                b_both_initialized = true;
+                return;
+            }
+        }
+    }
+    return;
 }
 
 };

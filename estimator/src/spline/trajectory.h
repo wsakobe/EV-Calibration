@@ -31,11 +31,13 @@ namespace estimator
     bool fix_ld;
     double ld_lower;
     double ld_upper;
+    SE3d T_ev2conv;
 
   private:
     int64_t data_start_time_;
 
     friend TrajectoryManager;
+
   };
 
 } // namespace estimator

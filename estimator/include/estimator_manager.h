@@ -7,6 +7,8 @@
 #include "initialization.h"
 #include "trajectory_manager.h"
 
+#include <mutex>
+
 namespace estimator{
 
 class EstimatorManager{
@@ -30,6 +32,11 @@ private:
 
     Initializer est_initializer;
     TrajectoryManager::Ptr trajectory_manager_;
+
+    std::vector<corner_msgs::cornerArray> corner_buffer_;
+    std::vector<circle_msgs::circleArray> circle_buffer_;
+
+    std::mutex init_lc;
 };
 
 };

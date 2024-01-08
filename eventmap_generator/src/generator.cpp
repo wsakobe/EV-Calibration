@@ -34,7 +34,7 @@ void EventMap::eventsCallback(const dvs_msgs::EventArray::ConstPtr& msg){
         output_event_num_ = (int)(msg->width * msg->height * 0.25);
     }     
 
-    measureTimeElapsed();
+    //measureTimeElapsed();
     for(const dvs_msgs::Event& e : msg->events){
         static bool first_input = true;
         if (first_input){
@@ -50,13 +50,14 @@ void EventMap::eventsCallback(const dvs_msgs::EventArray::ConstPtr& msg){
             for (auto last_event:events_){
                 pEventQueueMat_->insertEvent(last_event);
             }
-            generateEventMap(trig_time_);
+            ROS_INFO("The timestamp is %lld.%lld:", trig_time_.sec, trig_time_.nsec);
+            generateEventMap_hyperthread(trig_time_);
             trig_time_ = events_.back().ts;
         }
     }
 
-    std::cout << "generate cost:";
-    measureTimeElapsed();
+    //std::cout << "generate cost:";
+    //measureTimeElapsed();
 }
 
 void EventMap::init(int width, int height){
@@ -99,6 +100,7 @@ void EventMap::generateEventMap(const ros::Time& triggered_time){
     static cv_bridge::CvImage cv_image;
     cv_image.encoding = "32FC1";
     cv_image.image = event_map_no_polarity.clone();
+    cv_image.header.stamp = triggered_time;
 
     if(eventmap_pub_.getNumSubscribers() > 0)
     {
@@ -140,12 +142,12 @@ void EventMap::generateEventMap_hyperthread(const ros::Time& triggered_time){
 
     event_map_no_polarity = (event_map_no_polarity + 1) / 2;
     ROS_INFO("Event map generated");
-    cv::imshow("output", event_map_no_polarity);
-    cv::waitKey(1);
+    
     // Publish event image
     static cv_bridge::CvImage cv_image;
     cv_image.encoding = "mono8";
     cv_image.image = event_map_no_polarity.clone();
+    cv_image.header.stamp = triggered_time;
 
     if(eventmap_pub_.getNumSubscribers() > 0)
     {

@@ -28,7 +28,7 @@ void EstimatorManager::performEstimator(){
     if (first_inside){
         ROS_ERROR("Success initialized!");
         first_inside = false;
-        //TODO calculate T_conv_event
+        
 
         //TODO initialize trajectory
         setInitialState();
@@ -37,80 +37,76 @@ void EstimatorManager::performEstimator(){
         //calculate the pose
 
         //add into trajectory
-
+        //trajectory_manager_->extendTrajectory(current_img_time + 0.04 * S_TO_NS);
     }
-    // Optimization
 
-    // UpdateTrajectory
+    // UpdateTrajectory (Per t second do once)
+    //trajectory_manager_->UpdateTrajectory();
 
     // publish trajectory
 
 }
 
 void EstimatorManager::cornerArrayCallback(const corner_msgs::cornerArray& msg){
-    //Initialization
-    est_initializer.corner_buffer_.push_back(msg);
-    if (!est_initializer.convInitialSucc()){
-        if (est_initializer.judgeBufferStatus(CONV_CAM)){
-            est_initializer.processConv();
-            if (est_initializer.convInitialSucc()){
-                ROS_INFO("Conv camera initialized");
-                //TODO store information
-
+    if (!est_initializer.b_both_initialized){
+        est_initializer.corner_buffer_.push_back(msg);
+        init_lc.lock();
+        if (!est_initializer.convInitialSucc()){
+            if (est_initializer.judgeBufferStatus(CONV_CAM)){
+                est_initializer.processConv();
             }
         }
+        else{
+            if (est_initializer.evInitialSucc()){
+                ROS_INFO("Both camera initialized");
+                est_initializer.estimateInitialExtrinsic();
+            }        
+        }
+        init_lc.unlock();
     }
     else{
-        if (est_initializer.evInitialSucc()){
-            //TODO add new msg
-            ROS_INFO("Conv add trajectory");
-            performEstimator();
-        }        
-    }
+        ROS_INFO("Conv add trajectory");
+        corner_buffer_.emplace_back(msg);
+        performEstimator();
+    }    
 }
 
 void EstimatorManager::circleArrayCallback(const circle_msgs::circleArray& msg){
-    //Initialization
-    est_initializer.circle_buffer_.push_back(msg);
-    if (!est_initializer.evInitialSucc()){
-        if (est_initializer.judgeBufferStatus(EV_CAM)){
-            est_initializer.processEv();
-            if (est_initializer.evInitialSucc()){
-                //TODO store information
-                ROS_INFO("Ev camera initialized");
+    if (!est_initializer.b_both_initialized){
+        est_initializer.circle_buffer_.push_back(msg);
+        init_lc.lock();
+        if (!est_initializer.evInitialSucc()){
+            if (est_initializer.judgeBufferStatus(EV_CAM)){
+                est_initializer.processEv();
             }
         }
+        else{
+            if (est_initializer.convInitialSucc()){
+                ROS_INFO("Both camera initialized");
+                est_initializer.estimateInitialExtrinsic();
+            }        
+        }
+        init_lc.unlock();
     }
     else{
-        if (est_initializer.convInitialSucc()){
-            //TODO add new msg
-            ROS_INFO("Ev add trajectory");
-            performEstimator();
-        }        
-    }
-    
+        ROS_INFO("Ev add trajectory");
+        circle_buffer_.emplace_back(msg);
+        performEstimator();
+    }    
 }
 
 void EstimatorManager::setInitialState(){
-    
-    trajectory_manager_->SetSystemState();
 
-    int64_t t_image0 = vio_initializer_.timestamps[0] * S_TO_NS;
-    trajectory_->SetDataStartTime(t_image0);
+    trajectory_manager_->setOriginalPose();
 
-    const auto &imu_data_buf = imu_initializer_->GetIMUData();
-    for (auto const &imu_data : imu_data_buf)
-    {
-      if (imu_data.timestamp < t_image0)
-        continue;
-      trajectory_manager_->AddIMUData(imu_data);
-    }
+    //int64_t t_image0 = est_initializer.;
+    //trajectory_->SetDataStartTime(t_image0);
 
-    SO3d R0(initial_state.q);
-    for (size_t i = 0; i <= trajectory_->numKnots(); i++) // only 4 control points at the very beginning
-    {
-      trajectory_->setKnotSO3(R0, i);
-    }
+    // SO3d R0(initial_state.q);
+    // for (size_t i = 0; i <= trajectory_->numKnots(); i++) // only 4 control points at the very beginning
+    // {
+    //   trajectory_->setKnotSO3(R0, i);
+    // }
 }
 
 };

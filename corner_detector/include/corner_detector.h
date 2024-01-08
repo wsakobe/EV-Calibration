@@ -203,7 +203,7 @@ private:
     CornerTemplate ct;
 
     Chessboard cb;
-    long long input_timestamp;
+    ros::Time input_timestamp;
     
     std::vector<cornerInformation> corners;
 
@@ -250,7 +250,7 @@ void ImageProcessor::imageCallback(const sensor_msgs::ImageConstPtr& msg) {
         if (image.channels() == 1) {
             image.convertTo(image, CV_32FC1, 1/255.0);
         }
-        input_timestamp = msg->header.stamp.nsec;
+        input_timestamp = msg->header.stamp;
         extractCorner(image);
     }
     catch (cv_bridge::Exception& e) {
@@ -261,8 +261,6 @@ void ImageProcessor::imageCallback(const sensor_msgs::ImageConstPtr& msg) {
 
 void ImageProcessor::extractCorner(const cv::Mat& input_image) {
     corners.clear();
-    cv::imshow("Origin", input_image);
-    cv::waitKey(1);
 
     cornerPreFilter(input_image);
     templateMatching(input_image);
@@ -403,11 +401,7 @@ void ImageProcessor::templateMatching(const cv::Mat& image){
         else
             it++;
     }
-    for (auto p:corners){
-        cv::circle(image_plot, p.corner_position, 20, cv::Scalar(120, 120, 120), 3);
-    }
-    cv::imshow("1", image_plot);
-    cv::waitKey(1);
+    
     return;
 }
 
