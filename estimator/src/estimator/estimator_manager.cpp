@@ -13,6 +13,10 @@ EstimatorManager::EstimatorManager(const YAML::Node &yaml_node, ros::NodeHandle&
     est_initializer.conv_cam_size = cv::Size(yaml_node["conv_cam_width"].as<int>(), yaml_node["conv_cam_height"].as<int>());
     est_initializer.ev_cam_size = cv::Size(yaml_node["ev_cam_width"].as<int>(), yaml_node["ev_cam_height"].as<int>());
     est_initializer.square_size = yaml_node["square_size"].as<float>();
+
+    double knot_distance = 0.1;
+    trajectory_ = std::make_shared<Trajectory>(knot_distance);
+    trajectory_manager_ = std::make_shared<TrajectoryManager>(trajectory_);
 }
 
 EstimatorManager::~EstimatorManager(){
@@ -28,9 +32,6 @@ void EstimatorManager::performEstimator(){
     if (first_inside){
         ROS_ERROR("Success initialized!");
         first_inside = false;
-        
-
-        //TODO initialize trajectory
         setInitialState();
     }
     else{
@@ -96,17 +97,65 @@ void EstimatorManager::circleArrayCallback(const circle_msgs::circleArray& msg){
 }
 
 void EstimatorManager::setInitialState(){
+    int64_t data_start_time = trajectory_->getDataStartTime();
+    int64_t trajectory_start_time = est_initializer.corner_buffer_selected.begin()->timestamp.toSec() * S_TO_NS;
+    trajectory_->setDataStartTime(trajectory_start_time);
 
-    trajectory_manager_->setOriginalPose();
+    // skip all circle features before the first corner feature
+    for (auto it = est_initializer.circle_buffer_.begin(); it != est_initializer.circle_buffer_.end();){
+        if (it->header.stamp.toSec() * S_TO_NS < trajectory_start_time)
+            it = est_initializer.circle_buffer_.erase(it);
+        else
+            break;
+    }
 
-    //int64_t t_image0 = est_initializer.;
-    //trajectory_->SetDataStartTime(t_image0);
+    // skip all corner features before the first selected corner feature
+    for (auto it = est_initializer.corner_buffer_.begin(); it != est_initializer.corner_buffer_.end();){
+        if (it->timestamp.toSec() * S_TO_NS <= trajectory_start_time)
+            it = est_initializer.corner_buffer_.erase(it);
+        else
+            break;
+    }
 
-    // SO3d R0(initial_state.q);
-    // for (size_t i = 0; i <= trajectory_->numKnots(); i++) // only 4 control points at the very beginning
-    // {
-    //   trajectory_->setKnotSO3(R0, i);
-    // }
+    // set initial pose (conv camera)
+    cv::Mat T;
+    est_initializer.solveRelativePose(est_initializer.corner_buffer_.front(), est_initializer.convCameraMatrix, est_initializer.convDistCoeffs, T);
+    Eigen::Matrix4d eigenT;
+    cv::cv2eigen(T, eigenT);
+    SE3d T_sop(eigenT);
+    SO3d R0(T_sop.rotationMatrix());
+    for (size_t i = 0; i <= trajectory_->numKnots(); i++) // only 4 control points at the very beginning
+    {
+      trajectory_->setKnotSO3(R0, i);
+    }
+
+    // add corner into trajectory
+    for (auto &corner:est_initializer.corner_buffer_){
+        est_initializer.solveRelativePose(corner, est_initializer.convCameraMatrix, est_initializer.convDistCoeffs, T);
+        Eigen::Matrix4d eigenT;
+        cv::cv2eigen(T, eigenT);
+        SE3d se3(eigenT);
+        int64_t current_img_time = corner.timestamp.toSec() * S_TO_NS;
+        current_img_time -= trajectory_start_time;
+        trajectory_manager_->extendTrajectory(current_img_time + 1000, se3);
+        estimator->addConvFeatureAnalytic(corner);
+    }
+
+    // add circle into trajectory
+    for (auto &circles:est_initializer.circle_buffer_){
+        for (auto &circle:circles.circles){
+            if (circle.timestamp.toSec() * S_TO_NS < trajectory_->getDataStartTime()){
+                continue;
+            }
+            if (circle.timestamp.toSec() * S_TO_NS > trajectory_->maxTimeNs()){
+                break;
+            }
+            estimator->addEventFeatureAnalytic(circle);
+        }
+    }
+
+    //update trajectory once
+    
 }
 
 };

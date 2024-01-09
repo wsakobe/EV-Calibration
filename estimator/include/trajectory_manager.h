@@ -12,9 +12,9 @@ public:
 
     typedef std::shared_ptr<TrajectoryManager> Ptr;
 
-    TrajectoryManager(const YAML::Node &node, Trajectory::Ptr trajectory);
+    TrajectoryManager(Trajectory::Ptr trajectory);
 
-    void extendTrajectory(int64_t max_time);
+    void extendTrajectory(int64_t max_time, SE3d now_knot);
     void setOriginalPose();
 
 private:

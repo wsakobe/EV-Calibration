@@ -32,6 +32,7 @@ private:
 
     Initializer est_initializer;
     TrajectoryManager::Ptr trajectory_manager_;
+    Trajectory::Ptr trajectory_;
 
     std::vector<corner_msgs::cornerArray> corner_buffer_;
     std::vector<circle_msgs::circleArray> circle_buffer_;

@@ -69,7 +69,7 @@ void Initializer::solveRelativePose(const corner_msgs::cornerArray& features, co
     cv::Mat_<double> last_row = (cv::Mat_<double>(1, 4) << 0, 0, 0, 1);
     cv::vconcat(Transformation, last_row, Transformation);
 
-    std::cout << rotationMat << std::endl << tvec << std::endl << Transformation << std::endl;
+    std::cout << Transformation << std::endl;
 }
 
 void Initializer::solveRelativePose(const circle_msgs::circleArray& features, const cv::Mat& Intrinsic, const cv::Mat& distCoeffs, cv::Mat& Transformation){
@@ -89,14 +89,7 @@ void Initializer::solveRelativePose(const circle_msgs::circleArray& features, co
     cv::Mat_<double> last_row = (cv::Mat_<double>(1, 4) << 0, 0, 0, 1);
     cv::vconcat(Transformation, last_row, Transformation);
 
-    std::cout << rotationMat << std::endl << tvec << std::endl << Transformation << std::endl;
-}
-
-SO3d Mat2So3(cv::Mat& rotationMat){
-    Eigen::Matrix3d eigenRotationMat;
-    cv::cv2eigen(rotationMat, eigenRotationMat);
-    Sophus::SO3d so3(eigenRotationMat);
-    return so3;
+    std::cout << Transformation << std::endl;
 }
 
 void Initializer::estimateInitialExtrinsic(){
@@ -105,12 +98,18 @@ void Initializer::estimateInitialExtrinsic(){
         for (size_t j = 0; j < circle_buffer_.size(); ++j){
             ros::Duration time_interval = time_ - circle_buffer_[j].header.stamp;
             std::cout << time_interval.toSec() << std::endl;
+            if (time_interval.toSec() < 0){
+                break;
+            }
             if (time_interval.toSec() < 0.05){
                 cv::Mat T_ev, T_c;
                 solveRelativePose(circle_buffer_[i], evCameraMatrix, evDistCoeffs, T_ev);
                 solveRelativePose(corner_buffer_[j], convCameraMatrix, convDistCoeffs, T_c);
                 cv::Mat T = T_ev * T_c.inv();
-                //T_ev2conv = SE3d(R_ev2conv, p_ev2conv);
+                Eigen::Matrix4d eigenT;
+                cv::cv2eigen(T, eigenT);
+                SE3d se3(eigenT);
+                //trajectory_->setExtrinsicMat(se3);
                 std::cout << "Extrinsic params guess:\n" << T << std::endl;
                 b_both_initialized = true;
                 return;

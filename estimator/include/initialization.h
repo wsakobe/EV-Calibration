@@ -131,6 +131,8 @@ private:
     circle_msgs::circleArray last_circle;
     int legal_corner_size, legal_circle_size;
 
+    Trajectory::Ptr trajectory_;
+
     cv::Mat convCameraMatrix, convDistCoeffs;
     std::vector<cv::Mat> convRvecs, convTvecs;
     cv::Mat evCameraMatrix, evDistCoeffs;

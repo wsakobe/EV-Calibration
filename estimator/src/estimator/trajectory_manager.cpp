@@ -2,7 +2,9 @@
 
 namespace estimator{
 
-TrajectoryManager::TrajectoryManager(const YAML::Node &node, Trajectory::Ptr trajectory){
+TrajectoryManager::TrajectoryManager(Trajectory::Ptr trajectory)
+    : trajectory_(trajectory)
+{
 
 }
 
@@ -10,8 +12,14 @@ void TrajectoryManager::setOriginalPose(){
     
 }
 
-void TrajectoryManager::extendTrajectory(int64_t max_time){
+void TrajectoryManager::extendTrajectory(int64_t max_time, SE3d now_knot){
+    double max_bef = trajectory_->maxTimeNs() * NS_TO_S;
+    max_bef_ns = trajectory_->maxTimeNs();
+    max_bef_idx = trajectory_->cpnum() - 1;
 
+    trajectory_->extendKnotsTo(max_time, now_knot); // maxTime>=max_time
+    double max_aft = trajectory_->maxTimeNs() * NS_TO_S;
+    max_aft_idx = trajectory_->cpnum() - 1;
 }
 
 }
